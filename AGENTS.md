@@ -27,16 +27,25 @@
 
 ```text
 i-am-so-hot/
-├── AGENTS.md          # 本文件：Agent 说明 + 文档索引
-├── docs/              # 产品与技术文档（当前唯一内容，代码尚未初始化）
-│   ├── I_AM_SO_HOT_PRD.md
-│   ├── I_AM_SO_HOT_Technical_Design.md
-│   ├── I_AM_SO_HOT_Roadmap.md
-│   └── I_AM_SO_HOT_Tech_Stack.md
-└── .git/
+├── AGENTS.md               # 本文件：Agent 说明 + 文档索引
+├── IAmSoHot.xcworkspace/   # 开发入口：App 工程 + ThermalCore 包
+├── IAmSoHot.xcodeproj/     # App 工程（com.jzhishu.iamsohot，LSUIElement 菜单栏 App）
+├── IAmSoHot/               # App 源码（AppDelegate / MenuBarController / Popover）
+├── Packages/
+│   └── ThermalCore/        # SPM 本地包：Sensor/Collector/Resolver/ThermalEngine/Scheduler
+│       ├── Sources/ThermalCore/
+│       └── Tests/ThermalCoreTests/
+└── docs/                   # 产品与技术文档
+    ├── I_AM_SO_HOT_PRD.md
+    ├── I_AM_SO_HOT_Technical_Design.md
+    ├── I_AM_SO_HOT_Roadmap.md
+    └── I_AM_SO_HOT_Tech_Stack.md
 ```
 
-> 注意：当前仓库处于**文档阶段**，尚无源代码、构建配置或测试。首次创建代码时请参照下方「文档索引」中的技术方案执行。
+> **开发入口是 `IAmSoHot.xcworkspace`**（workspace 成员包含 App 工程与 ThermalCore 包）。
+> 常用命令：
+> - 构建：`xcodebuild -workspace IAmSoHot.xcworkspace -scheme IAmSoHot build`
+> - 单元测试：`swift test --package-path Packages/ThermalCore`
 
 ---
 

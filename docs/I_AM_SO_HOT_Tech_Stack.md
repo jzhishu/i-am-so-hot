@@ -30,14 +30,15 @@
 
 ## 3. 工程结构
 
-Xcode App 工程 + SwiftPM 本地包分层：
+Xcode Workspace + App 工程 + SwiftPM 本地包分层（已初始化）：
 
 ```text
-IAmSoHot/                     # Xcode App Target
-├── AppDelegate               # NSStatusItem 生命周期
-├── MenuBarController
-├── Popover/                  # SwiftUI 面板
-└── ...
+IAmSoHot.xcworkspace/         # 开发入口（成员：App 工程 + ThermalCore 包）
+IAmSoHot.xcodeproj/           # App Target：com.jzhishu.iamsohot，LSUIElement
+IAmSoHot/                     # App 源码
+├── IAmSoHotApp.swift         # @main AppDelegate
+├── MenuBarController.swift   # NSStatusItem + NSPopover
+└── Popover/PopoverView.swift # SwiftUI 面板
 
 Packages/
 └── ThermalCore/              # SPM 本地包：纯逻辑，不依赖 UI
@@ -50,6 +51,9 @@ Packages/
     │   └── Scheduler/        # SLEEP / WATCH / LIVE 自适应采样
     └── Tests/ThermalCoreTests/
 ```
+
+> 注意：必须通过 **workspace** 构建（`xcodebuild -workspace IAmSoHot.xcworkspace`），
+> 单独 `-project` 构建无法解析本地包产品。
 
 原则：
 
@@ -185,8 +189,8 @@ Xcode Archive
 
 ## 8. 待办（工程初始化时执行）
 
-1. 创建 Xcode 工程 + ThermalCore SPM 包骨架。
-2. 确定 Bundle ID / 签名 Team。
+1. ~~创建 Xcode 工程 + ThermalCore SPM 包骨架~~（已完成：workspace + 工程 + 15 个单元测试）
+2. 确定签名 Team（Bundle ID 已定：com.jzhishu.iamsohot）。
 3. 验证 IOHID 温度读取在目标机型上的可用性（Phase 1 的第一步）。
 4. 搭建 Debug 自监控面板。
-5. 注册 Apple Developer Program（如尚未拥有）。
+5. 注册 Apple Developer Program（如尚未拥有，发布前才需要）。
