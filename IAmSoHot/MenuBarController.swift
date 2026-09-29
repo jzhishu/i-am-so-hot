@@ -1,34 +1,64 @@
 import AppKit
 import SwiftUI
+import ThermalCore
 
 /// 菜单栏控制器：管理 NSStatusItem（只显示温度数字）与 NSPopover。
 ///
 /// 产品原则（PRD §5）：
 /// - 菜单栏只显示一个温度数字，无图标动画、无状态标签。
 /// - 仅在温度值实际变化时更新 title。
+@MainActor
 final class MenuBarController: NSObject {
 
+    private let service: MonitorService
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private let hostingController: NSHostingController<PopoverView>
 
-    override init() {
+    init(service: MonitorService) {
+        self.service = service
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         popover = NSPopover()
+        hostingController = NSHostingController(rootView: PopoverView(
+            snapshot: MonitorSnapshot(
+                temperatureCelsius: nil, baselineCelsius: 45, totalCPU: 0,
+                thermalStateElevated: false, mode: .sleep, apps: []
+            ),
+            iconProvider: { _ in nil },
+            onQuit: { _ in }
+        ))
         super.init()
 
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PopoverView())
+        popover.delegate = self
+        popover.contentViewController = hostingController
 
         if let button = statusItem.button {
-            // TODO(Phase 1): 接入 TemperatureProvider 真实温度，当前为占位
             button.title = "--°"
             button.target = self
             button.action = #selector(togglePopover)
         }
+
+        service.onSnapshot = { [weak self] snapshot in
+            self?.handle(snapshot)
+        }
+    }
+
+    // MARK: - 快照驱动 UI（UI 只消费快照，技术方案 §19）
+
+    private func handle(_ snapshot: MonitorSnapshot) {
+        updateTemperature(snapshot.temperatureCelsius)
+        if popover.isShown {
+            hostingController.rootView = PopoverView(
+                snapshot: snapshot,
+                iconProvider: { [weak self] in self?.service.icon(for: $0) },
+                onQuit: { [weak self] in self?.service.quit($0) }
+            )
+        }
     }
 
     /// 更新菜单栏温度显示。仅当值变化时刷新，避免不必要的 UI 绘制。
-    func updateTemperature(_ celsius: Double?) {
+    private func updateTemperature(_ celsius: Double?) {
         let title: String
         if let celsius {
             title = "\(Int(celsius.rounded()))°"
@@ -40,14 +70,31 @@ final class MenuBarController: NSObject {
         }
     }
 
+    // MARK: - Popover
+
     @objc private func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            // TODO(Phase 5): 打开面板时切换采样模式 SLEEP/WATCH -> LIVE，
-            // 关闭后降级。由 ThermalCore.Scheduler 负责。
+            if let snapshot = service.snapshot {
+                hostingController.rootView = PopoverView(
+                    snapshot: snapshot,
+                    iconProvider: { [weak self] in self?.service.icon(for: $0) },
+                    onQuit: { [weak self] in self?.service.quit($0) }
+                )
+            }
+            // 打开面板 → 进入 LIVE 采样（PRD §10）
+            service.setPanelOpen(true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
+    }
+}
+
+@MainActor
+extension MenuBarController: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        // 关闭面板 → 采样自动降级（PRD §10）
+        service.setPanelOpen(false)
     }
 }

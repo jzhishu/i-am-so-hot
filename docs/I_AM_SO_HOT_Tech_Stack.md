@@ -115,6 +115,11 @@ NSRunningApplication → Bundle path → PPID 链 → responsible PID / coalitio
 ### 5.2 调试手段
 
 - **日志**：`os_log`，按 subsystem 分类（`sensor` / `resolver` / `thermal` / `scheduler`），Console.app 过滤。
+- **已踩过的坑**（v0.1 实测）：
+  1. Xcode 26 的 Debug Dylib 特性会让 Debug 二进制变成空壳（`__debug_blank_executor_main`），CLI 验证需 `xcodebuild ... ENABLE_DEBUG_DYLIB=NO`；在 Xcode 里 Run 无此问题。
+  2. `@main` + `NSApplicationDelegate` 在直接执行二进制时 `applicationDidFinishLaunching` 不触发 → 使用显式 `main.swift`。
+  3. `proc_taskinfo.pti_total_*` 单位是 **mach absolute time**（Apple Silicon 125/3 ns/tick），需 `mach_timebase_info` 换算。
+- **DEBUG CSV 导出**：`/tmp/iamsohot-debug.csv`，每次 tick 记录 mode/temp/cpu/baseline/top_app，用于对照实测温度曲线校准 τ。
 - **自监控 Debug 面板**（Debug 构建专属，隐藏入口）：
   - 自身 CPU / Memory / Wakeups
   - 归属缓存命中率、归属 method 分布

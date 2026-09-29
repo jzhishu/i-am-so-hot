@@ -45,13 +45,17 @@ i-am-so-hot/
 > **开发入口是 `IAmSoHot.xcworkspace`**（workspace 成员包含 App 工程与 ThermalCore 包）。
 > 常用命令：
 > - 构建：`xcodebuild -workspace IAmSoHot.xcworkspace -scheme IAmSoHot build`
+> - CLI 验证需加 `ENABLE_DEBUG_DYLIB=NO`（Xcode 26 的 debug dylib 会让二进制变成空壳，无法脱离 Xcode 运行）
 > - 单元测试：`swift test --package-path Packages/ThermalCore`
+> - 采集验证：`swift run --package-path Packages/ThermalCore thermalprobe`
+> - DEBUG 热模型数据：运行 App 后查看 `/tmp/iamsohot-debug.csv`（每次 tick 一行）
 
 ---
 
 ## 3. 技术要点速览（详见技术方案文档）
 
 - **平台**：macOS 14+（Apple Silicon 优先），Swift + AppKit（NSStatusItem/NSPopover）+ SwiftUI 面板；详见[技术选型与发布策略](docs/I_AM_SO_HOT_Tech_Stack.md)。
+- **入口**：显式 `main.swift`（不用 @main——实测 @main + NSApplicationDelegate 在直接执行二进制时 didFinishLaunching 不触发）。
 - **架构**：Sensor Core → Cheap Monitor / Event Monitor → Process Collector → App Resolver → App Aggregator → Thermal Engine → UI State。原则：默认低成本，必要时才进入详细分析。
 - **自适应采样**：`SLEEP`（5–10s 低频）→ `WATCH`（2–3s，温度升高）→ `LIVE`（面板打开，~1Hz），关闭面板自动降级。
 - **热量模型**：Power Score（v0.1 可只用 CPU）→ 热记忆水库 `H(t) = H(t-1)·e^(-Δt/τ) + P(t)·Δt` → Heat Share → Estimated `+°C` = Share × (当前温度 − 动态 Baseline)。
