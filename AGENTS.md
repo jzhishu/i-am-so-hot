@@ -31,7 +31,8 @@ i-am-so-hot/
 ├── docs/              # 产品与技术文档（当前唯一内容，代码尚未初始化）
 │   ├── I_AM_SO_HOT_PRD.md
 │   ├── I_AM_SO_HOT_Technical_Design.md
-│   └── I_AM_SO_HOT_Roadmap.md
+│   ├── I_AM_SO_HOT_Roadmap.md
+│   └── I_AM_SO_HOT_Tech_Stack.md
 └── .git/
 ```
 
@@ -41,7 +42,7 @@ i-am-so-hot/
 
 ## 3. 技术要点速览（详见技术方案文档）
 
-- **平台**：macOS（首版 Apple Silicon），预计使用 Swift / AppKit（NSStatusItem + NSPopover）。
+- **平台**：macOS 14+（Apple Silicon 优先），Swift + AppKit（NSStatusItem/NSPopover）+ SwiftUI 面板；详见[技术选型与发布策略](docs/I_AM_SO_HOT_Tech_Stack.md)。
 - **架构**：Sensor Core → Cheap Monitor / Event Monitor → Process Collector → App Resolver → App Aggregator → Thermal Engine → UI State。原则：默认低成本，必要时才进入详细分析。
 - **自适应采样**：`SLEEP`（5–10s 低频）→ `WATCH`（2–3s，温度升高）→ `LIVE`（面板打开，~1Hz），关闭面板自动降级。
 - **热量模型**：Power Score（v0.1 可只用 CPU）→ 热记忆水库 `H(t) = H(t-1)·e^(-Δt/τ) + P(t)·Δt` → Heat Share → Estimated `+°C` = Share × (当前温度 − 动态 Baseline)。
@@ -118,6 +119,7 @@ Phase 1 Collector（温度 / Total CPU / per-process CPU）
 | [docs/I_AM_SO_HOT_PRD.md](docs/I_AM_SO_HOT_PRD.md) | 产品需求文档：产品定位、目标用户、信息架构、App 归因、Quit、自适应采样、MVP 范围、成功标准 | 做任何功能 / UI 决策前 |
 | [docs/I_AM_SO_HOT_Technical_Design.md](docs/I_AM_SO_HOT_Technical_Design.md) | 技术方案：模块架构、App 归属算法、采集与调度策略、热模型公式、Estimated +°C、校准、性能预算与验证、开发顺序、技术风险 | 写代码 / 改架构前必读 |
 | [docs/I_AM_SO_HOT_Roadmap.md](docs/I_AM_SO_HOT_Roadmap.md) | 版本路线图：v0.1 → v1.0 各版本目标、验收标准、明确不做的功能、发布节奏 | 评估新需求归属版本时 |
+| [docs/I_AM_SO_HOT_Tech_Stack.md](docs/I_AM_SO_HOT_Tech_Stack.md) | 技术选型与发布策略：Swift + AppKit/SwiftUI、工程结构、温度/进程采集选型、调试方式、Developer ID 分发与 Sparkle 更新链路、已确认决策 | 工程初始化、选型有疑问、准备发布时 |
 
 ---
 
