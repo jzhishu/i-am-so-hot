@@ -65,6 +65,63 @@ v1.0  Predictive Thermal Monitor
 
 ---
 
+# 2.1 当前进度
+
+> 每次版本推进后更新本节。更新日期：2026-09-29
+
+## 总览
+
+| 版本 | 状态 | 备注 |
+|---|---|---|
+| v0.1 | ✅ **已完成**（2026-09-29） | 本机端到端验证通过 |
+| v0.2 | ⬜ 未开始 | 下一阶段 |
+| v0.3 | ⬜ 未开始 | |
+| v0.5 | ⬜ 未开始 | |
+| v0.8 | ⬜ 未开始 | |
+| v1.0 | ⬜ 未开始 | |
+
+## v0.1 验收核对（对应 §3 验收标准）
+
+### 产品
+
+- [x] 看当前温度 — IOHID 私有 API 实测（43.7–48°C），菜单栏数字 + 面板展示
+- [x] 看到 Chrome / Cursor / Docker 等真实 App — Bundle path 归并（Helper/Renderer 不直接出现）
+- [x] 不需要理解 Helper / Renderer — 五级归属规则（技术方案 §4.3）
+- [x] 找到主要热源 — 压测 4 核 `yes` 正确归因 Other 并以 share 0.95 登顶
+- [x] 点击 Quit — `NSRunningApplication.terminate()`，macOS / Other 不提供 Quit
+
+### 技术
+
+- [x] App 排名基本符合真实 CPU 使用 — Heat Share 与 CPU 一致（v0.1 Power Score = CPU）
+- [x] Chrome 多进程正确聚合 — sameBundle 最长前缀匹配，单测覆盖
+- [x] App 停止后热贡献逐渐衰减 — 热记忆水库（τ = 60s 初始值），单测覆盖
+- [x] 自身不出现在热源榜前列 — 自身 PID 排除；实测 RSS 30MB / 后台 CPU 0.0%
+
+### 自适应采样实测（DEBUG CSV）
+
+```text
+SLEEP(8s) → 负载 total_cpu 0.51 触发 WATCH(2.5s)
+→ 详细采样 app_count 0→39 → 温度 45.5→47.7°C 跟随负载
+→ 卸载后降级 SLEEP，热贡献保留并缓慢衰减
+```
+
+### 工程状态
+
+- 单元测试：28 个全部通过（ThermalCore）
+- 构建：Debug / Release 均通过
+- 调试工具：`thermalprobe`（采集验证）、`/tmp/iamsohot-debug.csv`（热模型调参）
+
+## v0.1 已知遗留（进入 v0.2 待办）
+
+1. PID reuse 检测缺失（当前注册表变化时全量清缓存）
+2. responsible PID / process coalition 归属未实现（优先级 4 暂缺）
+3. 自身 wakeups / 长时间能耗未做 30–60 分钟观测
+4. 面板真实截图走查未完成（当前仅验证数据链路）
+5. τ = 60s 为初始经验值，未用 CSV 数据做设备级校准
+6. Estimated +°C 依赖的 Baseline 为简单 idle EMA（v0.5 做完整动态学习）
+
+---
+
 # 3. v0.1 — Core MVP
 
 ## 版本目标
@@ -1022,15 +1079,15 @@ v1.0
 
 最终推荐：
 
-| 版本 | 核心目标 |
-|---|---|
-| v0.1 | 看温度、看热源、Quit |
-| v0.2 | 稳定、省电、归属更准 |
-| v0.3 | Heat Share / 热记忆 |
-| v0.5 | Baseline / GPU / 自校准 / 历史 |
-| v0.8 | 降温预测 Preview |
-| v1.0 | 完整预测型 Thermal Monitor |
-| v1.x | 高级诊断与实验功能 |
+| 版本 | 核心目标 | 状态 |
+|---|---|---|
+| v0.1 | 看温度、看热源、Quit | ✅ 已完成（2026-09-29） |
+| v0.2 | 稳定、省电、归属更准 | ⬜ 未开始 |
+| v0.3 | Heat Share / 热记忆 | ⬜ 未开始 |
+| v0.5 | Baseline / GPU / 自校准 / 历史 | ⬜ 未开始 |
+| v0.8 | 降温预测 Preview | ⬜ 未开始 |
+| v1.0 | 完整预测型 Thermal Monitor | ⬜ 未开始 |
+| v1.x | 高级诊断与实验功能 | ⬜ 未开始 |
 
 ---
 
