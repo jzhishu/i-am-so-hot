@@ -21,6 +21,12 @@ if let temp = provider.currentCelsius() {
     log("Temperature: unavailable (nil)")
 }
 
+// 1.5 传感器清点（模型设计验证）
+log("[1.5] sensor inventory ...")
+for sensor in SensorInventory.all() {
+    log(String(format: "  %@: %.1f°C", sensor.name, sensor.celsius))
+}
+
 // 2. Total CPU（两次采样差分）
 log("[2] total CPU ...")
 let sampler = CPUSampler()
