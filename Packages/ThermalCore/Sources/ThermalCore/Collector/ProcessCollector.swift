@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import CHIDBridge
 
 /// proc_taskinfo 的 pti_total_user / pti_total_system 单位是
 /// mach absolute time（实测 Apple Silicon：125/3 ns 每 tick），
@@ -67,6 +68,9 @@ public final class ProcessCollector {
             // 可执行路径（部分系统进程无路径，返回 nil 属正常）
             let path = executablePath(for: pid)
 
+            // responsible PID（WebKit XPC 等跨 bundle 子进程归属，技术方案 §4.3）
+            let responsible = responsibility_get_pid_responsible_for_pid(pid)
+
             // CPU 差分（mach ticks -> 秒）
             let delta: TimeInterval
             if let prev = previousCPUTimes[pid], cpuTime >= prev.cpuTime {
@@ -78,6 +82,7 @@ public final class ProcessCollector {
             samples.append(ProcessSample(
                 pid: pid,
                 parentPid: ppid,
+                responsiblePid: responsible > 0 ? responsible : nil,
                 executablePath: path,
                 processName: name,
                 cpuTimeDelta: delta

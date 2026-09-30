@@ -86,11 +86,23 @@ public final class AppResolver {
             }
             current = parent
         }
-        // 4. 系统进程规则
+        // 4. responsible PID（WebKit XPC 等跨 bundle 子进程：
+        //    PPID=1 断链且路径在 /System 下，常规手段会误归 macOS）
+        if let responsible = sample.responsiblePid,
+           responsible != sample.pid, responsible > 1 {
+            if let app = appsByPid[responsible] {
+                return ProcessOwnership(appID: app.id, confidence: 0.90, method: .responsiblePID)
+            }
+            if let path = allSamples[responsible]?.executablePath,
+               let app = app(containingPath: path) {
+                return ProcessOwnership(appID: app.id, confidence: 0.85, method: .responsiblePID)
+            }
+        }
+        // 5. 系统进程规则
         if isSystemProcess(sample) {
             return ProcessOwnership(appID: AppIdentity.macOS.id, confidence: 1.0, method: .systemRule)
         }
-        // 5. 兜底
+        // 6. 兜底
         return ProcessOwnership(appID: AppIdentity.other.id, confidence: 0.5, method: .unknown)
     }
 

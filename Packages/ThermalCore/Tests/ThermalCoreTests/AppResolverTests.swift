@@ -96,6 +96,60 @@ final class AppResolverTests: XCTestCase {
         XCTAssertEqual(result.method, .unknown)
     }
 
+    // MARK: - 优先级 4：responsible PID（WebKit XPC 跨 bundle 子进程）
+
+    func testResponsiblePIDMatchForWebKitXPC() {
+        let resolver = makeResolver()
+        // 模拟有道的 WebContent：PPID=1（断链）、路径在 /System 下（会误中系统规则）、
+        // 但 responsible PID 指向宿主主进程
+        let webContent = ProcessSample(
+            pid: 5000, parentPid: 1, responsiblePid: 1000,
+            executablePath: "/System/Volumes/Preboot/Cryptexes/OS/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent",
+            processName: "com.apple.WebKit.WebContent",
+            cpuTimeDelta: 0
+        )
+        let result = resolver.resolve(webContent, allSamples: [5000: webContent])
+        XCTAssertEqual(result.appID, chrome.id, "responsible PID 应指回宿主 App（Chrome pid=1000）")
+        XCTAssertEqual(result.method, .responsiblePID)
+    }
+
+    func testResponsiblePIDFallsBackToResponsibleProcessPath() {
+        let resolver = makeResolver()
+        // responsible PID 不在注册表（如宿主 App 刚退出），
+        // 但 responsible 进程的路径在已知 bundle 内
+        let chromeMain = sample(1000, path: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+        let helper = ProcessSample(
+            pid: 5001, parentPid: 1, responsiblePid: 1000,
+            executablePath: nil, processName: "xpc-helper", cpuTimeDelta: 0
+        )
+        let result = resolver.resolve(helper, allSamples: [1000: chromeMain, 5001: helper])
+        XCTAssertEqual(result.appID, chrome.id)
+        XCTAssertEqual(result.method, .responsiblePID)
+    }
+
+    func testSelfResponsibleDoesNotMatch() {
+        let resolver = makeResolver()
+        // responsible == 自身（普通进程）不应命中 responsiblePID 规则
+        let proc = ProcessSample(
+            pid: 6000, parentPid: 1, responsiblePid: 6000,
+            executablePath: "/Users/someone/bin/tool", processName: "tool", cpuTimeDelta: 0
+        )
+        let result = resolver.resolve(proc, allSamples: [6000: proc])
+        XCTAssertEqual(result.appID, AppIdentity.other.id)
+    }
+
+    // MARK: - 系统组件规则（PRD §8.3）
+
+    func testSystemUIComponents() {
+        XCTAssertTrue(SystemComponentRules.isSystemUIComponent(bundleID: "com.apple.controlcenter"))
+        XCTAssertTrue(SystemComponentRules.isSystemUIComponent(bundleID: "com.apple.dock"))
+        XCTAssertTrue(SystemComponentRules.isSystemUIComponent(bundleID: "com.apple.finder"))
+        // Safari 是普通 Apple App，用户可以正常退出，不在保护列表
+        XCTAssertFalse(SystemComponentRules.isSystemUIComponent(bundleID: "com.apple.Safari"))
+        XCTAssertFalse(SystemComponentRules.isSystemUIComponent(bundleID: "com.google.Chrome"))
+        XCTAssertFalse(SystemComponentRules.isSystemUIComponent(bundleID: nil))
+    }
+
     // MARK: - 缓存（技术方案 §4.5）
 
     func testCacheReturnsSameResultAndSurvivesUntilInvalidated() {

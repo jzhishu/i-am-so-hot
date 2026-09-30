@@ -11,6 +11,8 @@ public struct AppIdentity: Sendable, Equatable, Identifiable {
     public let localizedName: String
     public let bundlePath: String?
     public let executablePath: String?
+    /// 系统 UI 组件（控制中心 / Dock / Finder 等）：不提供 Quit（PRD §8.3）
+    public let isSystemComponent: Bool
 
     public init(
         id: String,
@@ -18,7 +20,8 @@ public struct AppIdentity: Sendable, Equatable, Identifiable {
         bundleID: String? = nil,
         localizedName: String,
         bundlePath: String? = nil,
-        executablePath: String? = nil
+        executablePath: String? = nil,
+        isSystemComponent: Bool = false
     ) {
         self.id = id
         self.rootPid = rootPid
@@ -26,14 +29,19 @@ public struct AppIdentity: Sendable, Equatable, Identifiable {
         self.localizedName = localizedName
         self.bundlePath = bundlePath
         self.executablePath = executablePath
+        self.isSystemComponent = isSystemComponent
     }
 }
 
 extension AppIdentity {
     /// 系统核心进程（kernel_task / launchd / WindowServer 等）统一归类为 macOS，
     /// 不提供 Quit（PRD §8.3）。
-    public static let macOS = AppIdentity(id: "system.macos", localizedName: "macOS")
+    public static let macOS = AppIdentity(
+        id: "system.macos", localizedName: "macOS", isSystemComponent: true
+    )
 
     /// 无法归属的进程兜底归类。
-    public static let other = AppIdentity(id: "system.other", localizedName: "Other")
+    public static let other = AppIdentity(
+        id: "system.other", localizedName: "Other", isSystemComponent: true
+    )
 }

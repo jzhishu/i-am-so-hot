@@ -198,7 +198,8 @@ public final class ThermalMonitor {
                     cpu: sample.cpu,
                     processCount: sample.processCount,
                     heatShare: shares[sample.appID] ?? 0,
-                    estimatedDeltaC: deltaCs[sample.appID] ?? 0
+                    estimatedDeltaC: deltaCs[sample.appID] ?? 0,
+                    isSystemComponent: identity.isSystemComponent
                 )
             }
             .sorted { $0.heatShare > $1.heatShare }

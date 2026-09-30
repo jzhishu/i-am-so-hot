@@ -44,14 +44,16 @@ struct PopoverView: View {
         snapshot.residualBaselineCelsius ?? snapshot.baselineCelsius
     }
 
-    /// 顶部文案随温度状态变化
+    /// 顶部文案随温度状态变化。
+    /// 句式大小写用于动态状态；产品名 I AM SO HOT 全大写保留给真正高热状态，
+    /// 文案本身就是状态指示器。
     private var headline: String {
         guard let temp = snapshot.temperatureCelsius else { return "I AM SO HOT" }
         let delta = temp - displayedBaseline
-        if snapshot.thermalStateElevated && delta > 15 { return "I'M ON FIRE" }
+        if snapshot.thermalStateElevated && delta > 15 { return "I'm on Fire" }
         if delta > 15 { return "I AM SO HOT" }
-        if delta > 5 { return "GETTING WARM" }
-        return "I'M COOL"
+        if delta > 5 { return "Getting Warm" }
+        return "I'm Cool"
     }
 
     private var header: some View {

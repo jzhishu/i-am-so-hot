@@ -29,7 +29,10 @@ final class RunningAppRegistry {
                 localizedName: app.localizedName
                     ?? bundleURL.deletingPathExtension().lastPathComponent,
                 bundlePath: bundleURL.path,
-                executablePath: app.executableURL?.path
+                executablePath: app.executableURL?.path,
+                isSystemComponent: SystemComponentRules.isSystemUIComponent(
+                    bundleID: app.bundleIdentifier
+                )
             )
         }
         return AppRegistryMerger.merge(identities)

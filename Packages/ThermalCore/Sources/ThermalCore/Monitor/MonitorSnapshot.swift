@@ -10,13 +10,16 @@ public struct AppHeatInfo: Sendable, Identifiable {
     public let processCount: Int
     public let heatShare: Double   // 0~1
     public let estimatedDeltaC: Double
+    /// 系统 UI 组件（控制中心 / Dock / Finder 等）：不提供 Quit
+    public let isSystemComponent: Bool
 
-    /// 系统归类（macOS / Other）不提供 Quit（PRD §8.3）
-    public var canQuit: Bool { rootPid != nil }
+    /// 系统归类（macOS / Other）与系统 UI 组件不提供 Quit（PRD §8.3）
+    public var canQuit: Bool { rootPid != nil && !isSystemComponent }
 
     public init(
         id: String, name: String, bundlePath: String?, rootPid: pid_t?,
-        cpu: Double, processCount: Int, heatShare: Double, estimatedDeltaC: Double
+        cpu: Double, processCount: Int, heatShare: Double, estimatedDeltaC: Double,
+        isSystemComponent: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -26,6 +29,7 @@ public struct AppHeatInfo: Sendable, Identifiable {
         self.processCount = processCount
         self.heatShare = heatShare
         self.estimatedDeltaC = estimatedDeltaC
+        self.isSystemComponent = isSystemComponent
     }
 }
 

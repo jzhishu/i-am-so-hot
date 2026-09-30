@@ -114,7 +114,8 @@ SLEEP(8s) → 负载 total_cpu 0.51 触发 WATCH(2.5s)
 ## v0.1 已知遗留（进入 v0.2 待办）
 
 1. PID reuse 检测缺失（当前注册表变化时全量清缓存）
-2. responsible PID / process coalition 归属未实现（优先级 4 暂缺）
+2. ~~responsible PID / process coalition 归属未实现~~（✅ 2026-09-30 已实现：
+   有道的 WebKit 网页内容进程曾被误归 macOS，实测 responsible PID 可正确指回宿主）
 3. 自身 wakeups / 长时间能耗未做 30–60 分钟观测
 4. ~~面板真实截图走查未完成~~（已完成两轮走查，问题见下表）
 5. ~~τ = 60s 为初始经验值~~（纳入热模型 v2 校准计划，见 §2.2）

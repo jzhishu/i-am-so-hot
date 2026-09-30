@@ -14,10 +14,10 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let hostingController: NSHostingController<PopoverView>
-    /// popover 最近一次关闭时间：用于修复 .transient 的经典缺陷——
-    /// 点击菜单栏图标想关闭面板时，系统先把面板当“外部点击”关闭，
-    /// 随后按钮 action 又触发 toggle 将其重新打开（体感：点图标关不掉）。
+    /// popover 最近一次关闭时间：防止同一次点击既关闭又重开。
     private var lastPopoverCloseTime: Date?
+    /// 外部点击监听（点击面板外任意位置关闭）
+    private var outsideClickMonitors: [Any] = []
 
     init(service: MonitorService) {
         self.service = service
@@ -34,7 +34,7 @@ final class MenuBarController: NSObject {
         ))
         super.init()
 
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined // 关闭行为由事件监听显式控制
         popover.animates = false // 克制原则：无动画（PRD §4.2）
         popover.delegate = self
         popover.contentViewController = hostingController
@@ -102,6 +102,47 @@ final class MenuBarController: NSObject {
         // 打开面板 → 进入 LIVE 采样（PRD §10）
         service.setPanelOpen(true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        startOutsideClickMonitors()
+    }
+
+    // MARK: - 外部点击关闭
+
+    /// .applicationDefined 模式下由我们显式控制关闭：
+    /// - 全局监听：点击其他 App / 桌面时关闭
+    /// - 本地监听：点击本 App 内非面板区域（如菜单栏图标）时关闭，
+    ///   随后按钮 action 触发 toggle，由 lastPopoverCloseTime 守卫防重开
+    private func startOutsideClickMonitors() {
+        stopOutsideClickMonitors()
+
+        if let global = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] _ in
+            self?.closePopover()
+        } {
+            outsideClickMonitors.append(global)
+        }
+
+        if let local = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
+            guard let self else { return event }
+            if event.window != self.popover.contentViewController?.view.window {
+                self.closePopover()
+            }
+            return event
+        } {
+            outsideClickMonitors.append(local)
+        }
+    }
+
+    private func stopOutsideClickMonitors() {
+        outsideClickMonitors.forEach { NSEvent.removeMonitor($0) }
+        outsideClickMonitors = []
+    }
+
+    private func closePopover() {
+        guard popover.isShown else { return }
+        popover.performClose(nil)
     }
 }
 
@@ -109,6 +150,7 @@ final class MenuBarController: NSObject {
 extension MenuBarController: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         lastPopoverCloseTime = Date()
+        stopOutsideClickMonitors()
         // 关闭面板 → 采样自动降级（PRD §10）
         service.setPanelOpen(false)
     }
