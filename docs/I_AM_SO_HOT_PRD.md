@@ -182,6 +182,8 @@ I AM SO HOT 应该给用户看：
 > **v2 修订（2026-09-30）**：面板数字必须构成恒等式——用户看到的账必须平。
 > Baseline 展示残差（Current − ΣApps），列表完整化（前 8 名 + N more apps），
 > 保证 Baseline + Σ行项目 = Current 恒成立。
+> 精度规则：恒等式区域的 Current 与 Baseline / 行项目同精度（0.1°C），
+> 避免整数舍入造成视觉上的不等；菜单栏与面板头部保持整数。
 
 ```text
 I AM SO HOT                         78°C
@@ -195,7 +197,7 @@ macOS           CPU 5%  · Heat 18%     +5.0°C
 Other           CPU 3%  · Heat 10%     +2.3°C
 
 Baseline                              50.0°C
-Current                               78.0°C
+Current                               78.0°C   ← 恒等式区域同精度（0.1°C），菜单栏/头部为整数
 ```
 
 ### 6.2 UI 约束

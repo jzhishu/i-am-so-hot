@@ -588,6 +588,8 @@ B + \sum_i g \cdot H_i \approx T_{current}
 > 转为内部校准用途，两者差异即模型误差（第三步校准信号）。
 > 列表完整化（前 8 名 + N more apps 聚合行），保证：
 > **Baseline + Σ行项目 = Current 恒成立**，且 Baseline 结构上不可能高于 Current。
+> 精度规则：恒等式区域的 Current 与 Baseline / 行项目同精度（0.1°C），
+> 避免整数舍入造成视觉上的不等；菜单栏与面板头部保持整数。
 
 ```text
 Google Chrome      +4.6°C

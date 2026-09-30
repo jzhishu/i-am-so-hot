@@ -73,6 +73,16 @@ struct PopoverView: View {
         }
     }
 
+    /// 恒等式区域的 Current：与 Baseline / 行项目同精度（0.1°C），
+    /// 避免整数舍入造成「加起来不等」的视觉误差（菜单栏与头部仍为整数）。
+    private var currentPreciseText: String {
+        if let temp = snapshot.temperatureCelsius {
+            String(format: "%.1f°C", temp)
+        } else {
+            "--°C"
+        }
+    }
+
     private func sectionTitle(_ title: String) -> some View {
         Text(title)
             .font(.caption)
@@ -191,7 +201,7 @@ struct PopoverView: View {
             HStack {
                 Text("Current")
                 Spacer()
-                Text(temperatureText)
+                Text(currentPreciseText)
                     .monospacedDigit()
             }
             Text("Estimated values, not sensor measurements")
