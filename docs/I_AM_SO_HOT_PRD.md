@@ -306,36 +306,43 @@ Estimated +11.2°C
 
 ### 9.2 温度组成
 
+> **v2 修订（2026-09-30）**：原「Current = Baseline + Apps + System + Other」
+> 概念模型替换为带物理锚点的热模型 v2（详见技术方案 §11–§14）。
+
 概念模型：
 
 ```text
 Current Temperature
-=
-Baseline
+≈
+Baseline（慢速传感器锚点 + idle 学习偏移）
 +
-Apps
-+
-System
-+
-Other
+Σ 每个 App 的 Estimated +°C（g × 热储量）
 ```
 
 例如：
 
 ```text
-Baseline             50.0°C
-Google Chrome       +11.2°C
-Cursor               +6.4°C
-Docker               +3.1°C
-macOS                +5.0°C
-Other                +2.3°C
+Baseline（锚点）      34.9°C
+Google Chrome        +4.6°C
+Cursor               +2.1°C
+Docker               +1.1°C
+macOS                +0.4°C
+其他长尾              +0.2°C
 ────────────────────────────
-Current              78.0°C
+Estimated Current    43.3°C   ≈ 实测 43.3°C
 ```
+
+性质：
+
+- Baseline 由慢速温度传感器（电池/机身）锚定，结构上不会出现高于当前温度的情况。
+- Estimated `+X°C` 由 g × H_i 计算，App 有持续负载时贡献恒为正，不会在低温时全体塌缩为 0。
+- Baseline + ΣApps ≈ Current 是模型的自检等式，预测误差用于在线校准，不作为 UI 需要凑平的账。
 
 ### 9.3 精度声明
 
 `+X°C` 是通过资源使用、历史负载和温度响应模型得到的估算值，不应被描述为传感器直接测量结果。
+
+模型通过对比预测温度（Baseline + Σ 贡献）与实测温度持续自我校准，设备使用时间越长，估算越贴近该设备的实际散热特性。
 
 ---
 

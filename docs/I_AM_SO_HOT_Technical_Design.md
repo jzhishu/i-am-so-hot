@@ -497,95 +497,102 @@ Heat Share 应作为首版最可信指标。
 
 ## 11. Baseline
 
+> **v2 修订（2026-09-30）**：本节替代原「idle 温度 EMA」方案。
+> 原方案无物理锚点：会出现 baseline 高于实测温度、被负载后的降温尾巴污染、
+> 收敛速度追不上实际降温等问题（v0.1 截图走查实测确认）。
+
 ### 11.1 定义
 
 Baseline：
 
 > 当前设备在相同环境下、没有显著高负载软件时的预计温度。
 
-### 11.2 不应固定写死
+### 11.2 传感器分层（v2 的物理基础）
 
-Baseline 受到：
+Apple Silicon 通过 IOHID 暴露多个温度传感器，实测分两层：
 
-- Mac 型号
-- 环境温度
-- 充电状态
-- 外接显示器
-- 屏幕亮度
-- 机身散热条件
-- 长时间负载历史
+- **快层**（die 传感器，如 `PMU tdie*` / `PMU TP*`）：SoC 核心温度，随负载秒级波动。
+  作为「当前温度」主指标。
+- **慢层**（电池/机身传感器，如 `gas gauge battery`、部分 `tdev`）：
+  随环境分钟级漂移，几乎不受瞬时负载影响，实测比 die 低约 8–10°C。
+  作为 baseline 的物理锚点。
 
-影响。
-
-### 11.3 动态学习
-
-只在系统满足 idle 条件时学习：
-
-```text
-Total CPU low
-GPU low
-thermalState nominal
-temperature stable
-```
-
-更新：
+### 11.3 计算
 
 \[
-B_t
-=
-(1-\alpha)B_{t-1}
-+
-\alpha T_t
+B(t) = T_{slow}(t) + \delta
 \]
 
-其中 \(\alpha\) 非常小。
+- \(T_{slow}\)：慢层锚点。取非 die、非校准类（tcal）传感器的最低值，多传感器取最低可自然剔除电池充电发热等异常。
+- \(\delta\)：die 与慢层在确认 idle 且温度稳定时学习到的偏移量（本机约 9°C），EMA 慢速更新，并钳制在合理区间（如 2–15°C）。
 
-避免高负载期间污染 baseline。
+无慢层传感器的设备（如 Intel Mac）退化为不对称 EMA（§11.4 同规则，直接作用于 B）。
+
+### 11.4 不对称跟踪（结构性保证）
+
+物理上 baseline 不可能高于当前温度（App 热贡献非负）：
+
+- 当 \(T < B\)：\(\delta\)（或退化模式的 B）**快速下修**追向 T，时间常数约 1 分钟级。
+- 当 \(T \ge B\)：只允许在 idle + 温度稳定时**慢速上调**。
+
+效果：结构上几乎不可能出现 baseline 高于当前温度。
+
+### 11.5 学习条件（\(\delta\) 更新门槛）
+
+\(\delta\) 只在全部满足时更新：
+
+- Total CPU low
+- thermalState nominal
+- **温度稳定**（近期窗口内波动很小，排除负载后的降温尾巴）
+- 慢层锚点无异常（多传感器取最低已大部分覆盖；充电场景在 v0.5 进一步建模）
+
+### 11.6 v0.5 增强方向
+
+- 充电状态 / 外接显示器 / 屏幕亮度等环境因子建模
+- 长期历史与多环境 profile
 
 ---
 
 ## 12. Estimated +°C
 
-定义额外温升：
+> **v2 修订（2026-09-30）**：原 \(\Delta T_i = Share_i \times \max(0, T - B)\) 替换为
+> \(\Delta T_i = g \cdot H_i\)。原公式在 T ≤ baseline 时全体塌缩为 0（v0.1 实测），
+> 且无法表达「低于 baseline 的温热状态」下 App 的真实贡献。
+
+### 12.1 计算
 
 \[
-\Delta T
-=
-\max(0, T_{current}-T_{baseline})
+\Delta T_i = g \cdot H_i
 \]
 
-每个 App：
+- \(H_i\)：App 热记忆水库（§9，不变）。
+- \(g\)：设备级温升系数（°C / 单位热储量），在线回归校准（§14）。
+
+性质：
+
+- App 有持续负载时贡献恒为正，不存在塌缩。
+- Heat Share 由 \(H_i\) 天然导出（\(Share_i = H_i / \sum_j H_j\)），继续作为排序与相对比例指标。
+
+### 12.2 自检等式
 
 \[
-\Delta T_i
-=
-Share_i
-\cdot
-\Delta T
+B + \sum_i g \cdot H_i \approx T_{current}
 \]
 
-即：
+预测与实测的偏差是模型健康度指标与校准数据源，Debug 面板展示 estimated vs actual。
 
-\[
-\boxed{
-\Delta T_i
-=
-(T-T_{baseline})
-\frac{H_i}{\sum_j H_j}
-}
-\]
-
-最终展示：
+### 12.3 展示
 
 ```text
-Google Chrome      +11.2°C
-Cursor              +6.4°C
-Docker              +3.1°C
-macOS               +5.0°C
-Other               +2.3°C
+Google Chrome      +4.6°C
+Cursor             +2.1°C
+Docker             +1.1°C
+macOS              +0.4°C
 
-Baseline             50.0°C
-Current              78.0°C
+Apps (sum)         +8.4°C
+Baseline           34.9°C
+─────────────────────────
+Current            43.3°C
 ```
 
 必须标记为：
@@ -621,20 +628,26 @@ P-k(T-T_{ambient})
 
 通过长期采样可逐步估计。
 
+> **v2 修订（2026-09-30）**：本模型从「未来可做」升级为热模型 v2 的常态机制——
+> 它是温升系数 g 与散热时间常数 τ 在线校准的基础（§12 / §14）。
+
 ---
 
 ## 14. 模型在线校准
 
+> **v2 修订（2026-09-30）**：g（温升系数）成为第一校准对象，
+> 配套 baseline 偏移 δ 与散热时间常数 τ。
+
 观测：
 
 ```text
-real dT/dt
+real dT/dt，以及稳态附近的 (ΣP, T - B) 样本
 ```
 
 预测：
 
 ```text
-predicted dT/dt
+predicted dT/dt = α·ΣP − β·(T − B)
 ```
 
 损失：
@@ -645,12 +658,16 @@ Loss
 (dT/dt-\hat{dT/dt})^2
 \]
 
-用于逐步校准：
+用于逐步校准（按优先级）：
 
-- CPU weight
-- GPU weight
-- \(\tau\)
-- thermal gain
+- **g（温升系数）**：稳态样本 Σ g·H ≈ T − B 回归；g·H_i 是 +°C 的来源（§12）
+- **δ（baseline 偏移）**：仅 idle + 温度稳定时慢速学习（§11.5）
+- **τ（散热时间常数）**：初始值用 DEBUG CSV 离线拟合，在线微调
+- CPU weight / GPU weight（v0.5 GPU 接入后）
+
+异常样本剔除：环境突变（如暴晒）、电池充电发热段不参与校准。
+
+校准数据链：DEBUG CSV（每次 tick 记录 T / B / ΣH / 预测误差）→ 离线拟合初值 → 在线回归收敛。
 
 首版不建议引入神经网络或复杂 ML。
 
