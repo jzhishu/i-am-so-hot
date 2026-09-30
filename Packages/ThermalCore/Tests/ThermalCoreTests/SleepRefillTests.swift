@@ -19,7 +19,7 @@ final class SleepRefillTests: XCTestCase {
     func testRefillKeepsReservoirAliveInSleep() {
         // 模拟日常场景：WATCH 建立分布后进入 SLEEP，
         // 回填应使 ΣH 维持在 P × τ 量级而不是衰减到 0
-        var engine = ThermalEngine(tau: 60)
+        var engine = ThermalEngine()
         engine.ingest(powerScores: ["chrome": 0.8, "macos": 0.2], deltaTime: 1)
 
         let totalCPU = 0.1 // 10 核 ≈ 1 核总功率（含后台）

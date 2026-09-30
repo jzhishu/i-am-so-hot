@@ -65,12 +65,13 @@ public final class ThermalMonitor {
 
     public init(
         temperatureProvider: TemperatureProvider = IOHIDTemperatureProvider(),
-        tau: Double = 60,
+        tauFast: Double = 15,
+        tauSlow: Double = 120,
         initialBaseline: Double = 45,
         initialGain: Double = 0.016
     ) {
         self.temperatureProvider = temperatureProvider
-        self.engine = ThermalEngine(tau: tau)
+        self.engine = ThermalEngine(tauFast: tauFast, tauSlow: tauSlow)
         self.baseline = BaselineTracker(initial: initialBaseline)
         // 恢复持久化的校准值时给予较小初始方差（信任历史校准）
         self.calibrator = GainCalibrator(
