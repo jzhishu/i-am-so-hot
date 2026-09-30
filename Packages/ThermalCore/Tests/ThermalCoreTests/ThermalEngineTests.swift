@@ -46,25 +46,37 @@ final class ThermalEngineTests: XCTestCase {
         XCTAssertTrue(engine.heatShares().isEmpty)
     }
 
-    // MARK: - Estimated +°C（技术方案 §12）
+    // MARK: - Estimated +°C（热模型 v2 §12.1：ΔT_i = g × H_i）
 
-    func testEstimatedDeltaCs_distributeExcessHeat() {
+    func testEstimatedDeltaCs_proportionalToReservoir() {
         var engine = ThermalEngine(tau: 60)
         engine.ingest(powerScores: ["chrome": 3, "cursor": 1], deltaTime: 1)
 
-        // 78 - 50 = 28°C 额外温升，按 Share 分配：Chrome 21°C，Cursor 7°C
-        let deltas = engine.estimatedDeltaCs(currentCelsius: 78, baselineCelsius: 50)
-        XCTAssertEqual(deltas["chrome"]!, 21, accuracy: 1e-9)
-        XCTAssertEqual(deltas["cursor"]!, 7, accuracy: 1e-9)
+        // H_chrome = 3，H_cursor = 1（dt=1），g = 0.016
+        let deltas = engine.estimatedDeltaCs(gain: 0.016)
+        XCTAssertEqual(deltas["chrome"]!, 0.048, accuracy: 1e-9)
+        XCTAssertEqual(deltas["cursor"]!, 0.016, accuracy: 1e-9)
     }
 
-    func testEstimatedDeltaCs_zeroWhenBelowBaseline() {
+    func testEstimatedDeltaCs_neverCollapsesToZero() {
+        var engine = ThermalEngine(tau: 60)
+        // App 刚停止工作：瞬时 power = 0，但热储量未衰减完。
+        // v1 公式在 T ≤ baseline 时全体塌缩为 0；v2 只要有 H 就恒为正。
+        for _ in 0..<10 {
+            engine.ingest(powerScores: ["chrome": 40], deltaTime: 1)
+        }
+        engine.ingest(powerScores: [:], deltaTime: 1)
+
+        let deltas = engine.estimatedDeltaCs(gain: 0.016)
+        XCTAssertGreaterThan(deltas["chrome"]!, 0, "App 停止后热贡献应随水库衰减而不是瞬间归零")
+    }
+
+    func testEstimatedDeltaCs_scalesWithGain() {
         var engine = ThermalEngine(tau: 60)
         engine.ingest(powerScores: ["chrome": 10], deltaTime: 1)
-
-        // 温度低于 baseline 时 ΔT = max(0, T - B) = 0
-        let deltas = engine.estimatedDeltaCs(currentCelsius: 45, baselineCelsius: 50)
-        XCTAssertEqual(deltas["chrome"]!, 0, accuracy: 1e-9)
+        let d1 = engine.estimatedDeltaCs(gain: 0.01)["chrome"]!
+        let d2 = engine.estimatedDeltaCs(gain: 0.02)["chrome"]!
+        XCTAssertEqual(d2 / d1, 2.0, accuracy: 1e-9)
     }
 
     // MARK: - 资源清理

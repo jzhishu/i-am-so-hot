@@ -25,7 +25,7 @@ struct PopoverView: View {
             sectionTitle("HEATING YOUR MAC")
             appList
             Divider().padding(.vertical, 8)
-            baselineRow
+            bottomSummary
         }
         .padding(12)
         .frame(width: 320)
@@ -154,10 +154,18 @@ struct PopoverView: View {
         }
     }
 
-    // MARK: - Baseline
+    // MARK: - 底部汇总（热模型 v2 §12.3）
 
-    private var baselineRow: some View {
+    private var bottomSummary: some View {
         VStack(spacing: 4) {
+            HStack {
+                Text("Apps (sum)")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(String(format: "+%.1f°C", snapshot.appsTotalDeltaC))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
             HStack {
                 Text("Baseline")
                     .foregroundStyle(.secondary)
@@ -182,13 +190,14 @@ struct PopoverView: View {
             totalCPU: 0.72,
             thermalStateElevated: true,
             mode: .live,
-            apps: [
-                AppHeatInfo(id: "chrome", name: "Google Chrome", bundlePath: nil, rootPid: 100, cpu: 0.38, processCount: 17, heatShare: 0.39, estimatedDeltaC: 11.2),
+            apps: [                AppHeatInfo(id: "chrome", name: "Google Chrome", bundlePath: nil, rootPid: 100, cpu: 0.38, processCount: 17, heatShare: 0.39, estimatedDeltaC: 11.2),
                 AppHeatInfo(id: "cursor", name: "Cursor", bundlePath: nil, rootPid: 200, cpu: 0.21, processCount: 9, heatShare: 0.22, estimatedDeltaC: 6.4),
                 AppHeatInfo(id: "docker", name: "Docker", bundlePath: nil, rootPid: 300, cpu: 0.11, processCount: 4, heatShare: 0.11, estimatedDeltaC: 3.1),
                 AppHeatInfo(id: AppIdentity.macOS.id, name: "macOS", bundlePath: nil, rootPid: nil, cpu: 0.05, processCount: 120, heatShare: 0.18, estimatedDeltaC: 5.0),
                 AppHeatInfo(id: AppIdentity.other.id, name: "Other", bundlePath: nil, rootPid: nil, cpu: 0.03, processCount: 8, heatShare: 0.10, estimatedDeltaC: 2.3),
-            ]
+            ],
+            appsTotalDeltaC: 23.0,
+            estimatedCelsius: 73.0
         ),
         iconProvider: { _ in nil },
         onQuit: { _ in }

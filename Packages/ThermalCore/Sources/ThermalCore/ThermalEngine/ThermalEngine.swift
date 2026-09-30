@@ -53,13 +53,14 @@ public struct ThermalEngine: Sendable {
         return reservoirs.mapValues { $0 / total }
     }
 
-    /// Estimated +°C（技术方案 §12）：
+    /// Estimated +°C（热模型 v2，技术方案 §12.1）：
     ///
-    ///     ΔT_i = (T_current - T_baseline) · Share_i
+    ///     ΔT_i = g × H_i
     ///
-    /// 必须标注 Estimated，不是传感器实测值。
-    public func estimatedDeltaCs(currentCelsius: Double, baselineCelsius: Double) -> [String: Double] {
-        let deltaT = max(0, currentCelsius - baselineCelsius)
-        return heatShares().mapValues { $0 * deltaT }
+    /// g 为设备级温升系数（°C / 单位热储量），离线拟合初值 + 在线校准（§14）。
+    /// 与 v1 的区别：不依赖 T − baseline 的瞬时关系，App 有热储量时贡献恒为正，
+    /// 不会在低温时全体塌缩为 0。
+    public func estimatedDeltaCs(gain g: Double) -> [String: Double] {
+        reservoirs.mapValues { $0 * g }
     }
 }

@@ -39,6 +39,10 @@ public struct MonitorSnapshot: Sendable {
     public let mode: SamplingMode
     /// 按 heatShare 降序
     public let apps: [AppHeatInfo]
+    /// 全部 App 的 +°C 合计（含未展示的长尾，用于底部汇总行）
+    public let appsTotalDeltaC: Double
+    /// 模型自检：B + Σ g·H_i（热模型 v2 §12.2），应与实测温度接近
+    public let estimatedCelsius: Double?
 
     public init(
         temperatureCelsius: Double?,
@@ -46,7 +50,9 @@ public struct MonitorSnapshot: Sendable {
         totalCPU: Double,
         thermalStateElevated: Bool,
         mode: SamplingMode,
-        apps: [AppHeatInfo]
+        apps: [AppHeatInfo],
+        appsTotalDeltaC: Double,
+        estimatedCelsius: Double?
     ) {
         self.temperatureCelsius = temperatureCelsius
         self.baselineCelsius = baselineCelsius
@@ -54,5 +60,7 @@ public struct MonitorSnapshot: Sendable {
         self.thermalStateElevated = thermalStateElevated
         self.mode = mode
         self.apps = apps
+        self.appsTotalDeltaC = appsTotalDeltaC
+        self.estimatedCelsius = estimatedCelsius
     }
 }

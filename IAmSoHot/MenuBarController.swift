@@ -26,7 +26,8 @@ final class MenuBarController: NSObject {
         hostingController = NSHostingController(rootView: PopoverView(
             snapshot: MonitorSnapshot(
                 temperatureCelsius: nil, baselineCelsius: 45, totalCPU: 0,
-                thermalStateElevated: false, mode: .sleep, apps: []
+                thermalStateElevated: false, mode: .sleep, apps: [],
+                appsTotalDeltaC: 0, estimatedCelsius: nil
             ),
             iconProvider: { _ in nil },
             onQuit: { _ in }

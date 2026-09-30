@@ -44,6 +44,11 @@ public final class ThermalMonitor {
 
     public var currentMode: SamplingMode { modeController.mode }
 
+    /// 温升系数 g（°C / 单位热储量）——热模型 v2 §12.1。
+    /// 初值 0.016：2026-09-30 用本机 4 核压测 CSV 离线拟合（范围 0.011–0.020，
+    /// 取中段中位数；与 τ=60 配对，第三步在线联合校准）。
+    public var thermalGain: Double = 0.016
+
     public init(
         temperatureProvider: TemperatureProvider = IOHIDTemperatureProvider(),
         tau: Double = 60,
@@ -118,10 +123,12 @@ public final class ThermalMonitor {
         engine.ingest(powerScores: powerScores, deltaTime: max(tickDelta, 0.1))
 
         let shares = engine.heatShares()
-        let deltaCs = engine.estimatedDeltaCs(
-            currentCelsius: temperature ?? baseline.baseline,
-            baselineCelsius: baseline.baseline
-        )
+        // 热模型 v2：ΔT_i = g × H_i（§12.1）
+        let deltaCs = engine.estimatedDeltaCs(gain: thermalGain)
+        let totalDeltaC = deltaCs.values.reduce(0, +)
+        let estimatedCelsius = temperature != nil || totalDeltaC > 0
+            ? baseline.baseline + totalDeltaC
+            : nil
 
         // ── 6. 组装快照 ─────────────────────────────────────────────
         let apps: [AppHeatInfo] = lastAppSamples.values
@@ -147,7 +154,9 @@ public final class ThermalMonitor {
             totalCPU: totalCPU,
             thermalStateElevated: thermalElevated,
             mode: currentMode,
-            apps: apps
+            apps: apps,
+            appsTotalDeltaC: totalDeltaC,
+            estimatedCelsius: estimatedCelsius
         )
     }
 }
