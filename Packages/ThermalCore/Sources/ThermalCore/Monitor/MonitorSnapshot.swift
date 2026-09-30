@@ -43,6 +43,11 @@ public struct MonitorSnapshot: Sendable {
     public let appsTotalDeltaC: Double
     /// 模型自检：B + Σ g·H_i（热模型 v2 §12.2），应与实测温度接近
     public let estimatedCelsius: Double?
+    /// 残差 baseline（展示用）：T_current − ΣΔT_i。
+    /// 构造上保证 Baseline + ΣApps = Current 恒成立，
+    /// 且 Baseline 不可能高于当前温度。
+    /// 与模型 baseline（慢锚点+δ）的差即模型误差，是第三步校准信号。
+    public let residualBaselineCelsius: Double?
 
     public init(
         temperatureCelsius: Double?,
@@ -52,7 +57,8 @@ public struct MonitorSnapshot: Sendable {
         mode: SamplingMode,
         apps: [AppHeatInfo],
         appsTotalDeltaC: Double,
-        estimatedCelsius: Double?
+        estimatedCelsius: Double?,
+        residualBaselineCelsius: Double?
     ) {
         self.temperatureCelsius = temperatureCelsius
         self.baselineCelsius = baselineCelsius
@@ -62,5 +68,6 @@ public struct MonitorSnapshot: Sendable {
         self.apps = apps
         self.appsTotalDeltaC = appsTotalDeltaC
         self.estimatedCelsius = estimatedCelsius
+        self.residualBaselineCelsius = residualBaselineCelsius
     }
 }

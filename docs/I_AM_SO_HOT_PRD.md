@@ -179,28 +179,23 @@ I AM SO HOT 应该给用户看：
 
 ### 6.1 首版结构
 
+> **v2 修订（2026-09-30）**：面板数字必须构成恒等式——用户看到的账必须平。
+> Baseline 展示残差（Current − ΣApps），列表完整化（前 8 名 + N more apps），
+> 保证 Baseline + Σ行项目 = Current 恒成立。
+
 ```text
 I AM SO HOT                         78°C
 
-Current Temperature
-78°C · Hot
-
 HEATING YOUR MAC
 
-Google Chrome              +11.2°C
-CPU 38% · GPU 12%              Quit
+Google Chrome   CPU 38% · Heat 39%    +11.2°C   Quit
+Cursor          CPU 21% · Heat 22%     +6.4°C   Quit
+Docker          CPU 11% · Heat 11%     +3.1°C   Quit
+macOS           CPU 5%  · Heat 18%     +5.0°C
+Other           CPU 3%  · Heat 10%     +2.3°C
 
-Cursor                      +6.4°C
-CPU 21%                         Quit
-
-Docker                      +3.1°C
-CPU 11%                         Quit
-
-macOS                       +5.0°C
-
-Other                       +2.3°C
-
-Baseline                    50.0°C
+Baseline                              50.0°C
+Current                               78.0°C
 ```
 
 ### 6.2 UI 约束

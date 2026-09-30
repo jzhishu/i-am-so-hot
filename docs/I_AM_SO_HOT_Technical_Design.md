@@ -583,15 +583,20 @@ B + \sum_i g \cdot H_i \approx T_{current}
 
 ### 12.3 展示
 
+> **v2.1 修订（2026-09-30）**：展示层硬性原则——用户看到的账必须平。
+> 面板展示的 Baseline 为**残差**（T_current − ΣΔT_i），模型 baseline（慢锚点+δ）
+> 转为内部校准用途，两者差异即模型误差（第三步校准信号）。
+> 列表完整化（前 8 名 + N more apps 聚合行），保证：
+> **Baseline + Σ行项目 = Current 恒成立**，且 Baseline 结构上不可能高于 Current。
+
 ```text
 Google Chrome      +4.6°C
 Cursor             +2.1°C
 Docker             +1.1°C
 macOS              +0.4°C
+2 more apps        +0.2°C
 
-Apps (sum)         +8.4°C
 Baseline           34.9°C
-─────────────────────────
 Current            43.3°C
 ```
 
