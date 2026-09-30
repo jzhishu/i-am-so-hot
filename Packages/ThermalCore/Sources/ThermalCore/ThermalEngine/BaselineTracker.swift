@@ -9,7 +9,9 @@ import Foundation
 ///     B(t) = T_slow(t) + δ
 ///
 /// - T_slow：慢层传感器锚点（电池/机身，几乎不受瞬时负载影响）
-/// - δ：die 与慢层在 idle + 温度稳定时学习的偏移量（本机约 9°C）
+/// - δ：die 与慢层在 idle + 温度稳定时学习的偏移量。
+///   学习目标会减去当时 App 热贡献（Σ g·H），使 baseline 真正代表
+///   「无 App 负载」状态，避免常驻负载被同时算进 baseline 和 +°C（双重计算）。
 ///
 /// 不对称跟踪（§11.4，结构性保证 baseline 不高于当前温度）：
 /// - T < B：δ（或退化模式的 B）快速下修追向 T
@@ -62,11 +64,13 @@ public struct BaselineTracker: Sendable {
     /// - Parameters:
     ///   - die: 快层温度（°C），nil 时不更新
     ///   - slowAnchor: 慢层锚点（°C），nil 时走退化模式
+    ///   - appsDeltaC: 当前 App 热贡献合计（Σ g·H），学习 δ 时扣除
     ///   - isIdle: 低 CPU + thermalState nominal（调用方判定，§11.5）
     ///   - now: 采样时刻
     public mutating func update(
         die: Double?,
         slowAnchor: Double?,
+        appsDeltaC: Double,
         isIdle: Bool,
         now: Date = Date()
     ) {
@@ -82,15 +86,15 @@ public struct BaselineTracker: Sendable {
         }
 
         if let slow = slowAnchor {
-            updateWithAnchor(die: die, slow: slow, isIdle: isIdle)
+            updateWithAnchor(die: die, slow: slow, appsDeltaC: appsDeltaC, isIdle: isIdle)
         } else {
-            updateFallback(die: die, isIdle: isIdle)
+            updateFallback(die: die, appsDeltaC: appsDeltaC, isIdle: isIdle)
         }
     }
 
     // MARK: - 慢层锚点模式（§11.3 / §11.4）
 
-    private mutating func updateWithAnchor(die: Double, slow: Double, isIdle: Bool) {
+    private mutating func updateWithAnchor(die: Double, slow: Double, appsDeltaC: Double, isIdle: Bool) {
         guard var delta = offset else {
             // 首个慢层读数：用当前 die - slow 初始化 δ
             offset = clampOffset(die - slow)
@@ -107,7 +111,8 @@ public struct BaselineTracker: Sendable {
 
         // 慢速学习：仅 idle + 温度稳定（§11.5）
         if isIdle && isStable {
-            let learned = die - slow
+            // 学习目标 = 无 App 负载时的 die − slow 偏移（扣除当前 App 热贡献）
+            let learned = die - slow - appsDeltaC
             delta = clampOffset((1 - idleAlpha) * delta + idleAlpha * learned)
         }
 
@@ -117,13 +122,13 @@ public struct BaselineTracker: Sendable {
 
     // MARK: - 退化模式（无慢层传感器，如 Intel Mac）
 
-    private mutating func updateFallback(die: Double, isIdle: Bool) {
+    private mutating func updateFallback(die: Double, appsDeltaC: Double, isIdle: Bool) {
         if die < baseline {
             // 快速下修
             baseline += (die - baseline) * downAdjustmentRate
         } else if isIdle && isStable {
-            // 慢速上调
-            baseline += (die - baseline) * idleAlpha
+            // 慢速上调（目标同样扣除 App 热贡献）
+            baseline += (die - appsDeltaC - baseline) * idleAlpha
         }
     }
 

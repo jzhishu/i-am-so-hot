@@ -168,6 +168,15 @@ SLEEP(8s) → 负载 total_cpu 0.51 触发 WATCH(2.5s)
   不再依赖 T 与 baseline 的瞬时关系
 - DEBUG CSV 新增 apps_sum_delta / est_temp 列，为第三步在线校准备妥数据链
 
+**日常使用场景修复（2026-09-30，用户截图暴露）：**
+
+1. SLEEP 水库只衰减不补充 → +°C 系统性偏小：改为按「总 CPU × 核数 × 上次 share 分布」
+   回填，ΣH 保持 P×τ 稳态；另修复冷启动播种需两帧（首帧 CPU 差分全为 0）
+2. 常驻负载双重计算（baseline 的 δ 在日常 App 都在跑时学习）：
+   δ 学习目标改为 die − slow − Σg·H，恒等式构造上自洽
+3. 实测（1 核负载 + SLEEP 模式）：apps_sum_delta 0→1.6°C 爬向稳态不再归零，
+   est_temp 45.8 vs 实测 45.6（误差 ~0.2°C），baseline 44.2 不被污染
+
 **第一步实测验证（DEBUG CSV，2026-09-30）：**
 
 - 冷启动 baseline = 首个 die 读数（42.9°C），随后锁定慢锚点（~33°C）+ δ（~9.3）= 43.3°C

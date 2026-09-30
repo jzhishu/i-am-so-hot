@@ -9,12 +9,12 @@ final class BaselineTrackerTests: XCTestCase {
     /// 辅助：以固定间隔连续喂样本
     private func feed(
         _ tracker: inout BaselineTracker,
-        die: Double, slow: Double?, isIdle: Bool,
+        die: Double, slow: Double?, appsDeltaC: Double = 0, isIdle: Bool,
         count: Int, stepSeconds: Double = 8
     ) {
         for i in 0..<count {
             tracker.update(
-                die: die, slowAnchor: slow, isIdle: isIdle,
+                die: die, slowAnchor: slow, appsDeltaC: appsDeltaC, isIdle: isIdle,
                 now: t0.addingTimeInterval(Double(i) * stepSeconds)
             )
         }
@@ -24,7 +24,7 @@ final class BaselineTrackerTests: XCTestCase {
 
     func testColdStartUsesFirstReading() {
         var tracker = BaselineTracker(initial: 45)
-        tracker.update(die: 43.7, slowAnchor: nil, isIdle: false, now: t0)
+        tracker.update(die: 43.7, slowAnchor: nil, appsDeltaC: 0, isIdle: false, now: t0)
         XCTAssertEqual(tracker.baseline, 43.7, accuracy: 1e-9)
         XCTAssertTrue(tracker.isInitialized)
     }
@@ -84,7 +84,7 @@ final class BaselineTrackerTests: XCTestCase {
         let oscillating: [Double] = [46, 50, 47, 52, 49, 51, 48, 53, 50, 52]
         for (i, die) in oscillating.enumerated() {
             tracker.update(
-                die: die, slowAnchor: 34, isIdle: true,
+                die: die, slowAnchor: 34, appsDeltaC: 0, isIdle: true,
                 now: t0.addingTimeInterval(1000 + Double(i) * 8)
             )
         }
@@ -108,13 +108,35 @@ final class BaselineTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.baseline, b, accuracy: 1e-9)
     }
 
+    // MARK: - 双重计算修复（日常使用场景暴露：常驻负载污染 baseline）
+
+    func testOffsetLearningSubtractsAppHeat() {
+        var tracker = BaselineTracker(initial: 45)
+        // 首个慢层读数：δ 初始化为 die − slow = 9
+        tracker.update(die: 42, slowAnchor: 33, appsDeltaC: 0, isIdle: false, now: t0)
+        XCTAssertEqual(tracker.offset!, 9, accuracy: 1e-9)
+
+        // idle + 稳定 + 存在常驻 App 热贡献 0.8°C：
+        // δ 应向 die − slow − ΣΔT = 42 − 33 − 0.8 = 8.2 学习，而不是 9
+        var t = t0
+        for _ in 0..<200 {
+            tracker.update(die: 42, slowAnchor: 33, appsDeltaC: 0.8, isIdle: true, now: t)
+            t = t.addingTimeInterval(8)
+        }
+        XCTAssertEqual(tracker.offset!, 8.2, accuracy: 0.1,
+                       "δ 学习必须扣除 App 热贡献，否则常驻负载被双重计算")
+
+        // 恒等式自洽：B + ΣΔT = (33 + 8.2) + 0.8 = 42 ≈ die
+        XCTAssertEqual(tracker.baseline + 0.8, 42, accuracy: 0.15)
+    }
+
     // MARK: - 温度读取为 nil
 
     func testNilDieDoesNotUpdate() {
         var tracker = BaselineTracker(initial: 45)
-        tracker.update(die: 44, slowAnchor: 34, isIdle: true, now: t0)
+        tracker.update(die: 44, slowAnchor: 34, appsDeltaC: 0, isIdle: true, now: t0)
         let b = tracker.baseline
-        tracker.update(die: nil, slowAnchor: 34, isIdle: true, now: t0.addingTimeInterval(8))
+        tracker.update(die: nil, slowAnchor: 34, appsDeltaC: 0, isIdle: true, now: t0.addingTimeInterval(8))
         XCTAssertEqual(tracker.baseline, b, accuracy: 1e-9)
     }
 }
