@@ -120,7 +120,7 @@ final class MonitorService {
             top?.heatShare ?? 0,
             snapshot.appsTotalDeltaC,
             snapshot.estimatedCelsius ?? -1,
-            snapshot.residualBaselineCelsius ?? -1,
+            (snapshot.temperatureCelsius.map { $0 - snapshot.appsTotalDeltaC }) ?? -1,
             monitor.thermalGain
         )
         if let handle = try? FileHandle(forWritingTo: url) {

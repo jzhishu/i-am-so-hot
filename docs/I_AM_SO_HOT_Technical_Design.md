@@ -584,23 +584,23 @@ B + \sum_i g \cdot H_i \approx T_{current}
 
 ### 12.3 展示
 
-> **v2.1 修订（2026-09-30）**：展示层硬性原则——用户看到的账必须平。
-> 面板展示的 Baseline 为**残差**（T_current − ΣΔT_i），模型 baseline（慢锚点+δ）
-> 转为内部校准用途，两者差异即模型误差（第三步校准信号）。
-> 列表完整化（前 8 名 + N more apps 聚合行），保证：
-> **Baseline + Σ行项目 = Current 恒成立**，且 Baseline 结构上不可能高于 Current。
-> 精度规则：恒等式区域的 Current 与 Baseline / 行项目同精度（0.1°C），
-> 避免整数舍入造成视觉上的不等；菜单栏与面板头部保持整数。
+> **v2.2 修订（2026-09-30）**：删除面板 Baseline 行。
+> 残差 Baseline（T − ΣΔT_i）是「真实底噪 + 模型误差」的混合桶，
+> 误差恰在高负载（用户唯一会看的时刻）最大，显示它反而损害可信度。
+> 展示层恒等式改为 **Σ Heat Share = 100%**（天然成立，不依赖 g 与温度传感器）。
+> 模型 baseline（慢锚点+δ）保留为内部用途：g 在线校准的参照、面板文案状态分级。
+> +°C 行项目为估算，合计行（All apps combined）不强行与 Current 对齐。
+>
+> ~~v2.1 修订（已废止）：Baseline 展示残差，恒等式 Baseline + Σ行项目 = Current。~~
 
 ```text
-Google Chrome      +4.6°C
-Cursor             +2.1°C
-Docker             +1.1°C
-macOS              +0.4°C
-2 more apps        +0.2°C
+Google Chrome      +4.6°C   Heat 39%
+Cursor             +2.1°C   Heat 22%
+Docker             +1.1°C   Heat 11%
+macOS              +0.4°C   Heat 18%
+2 more apps        +0.2°C   Heat 10%
 
-Baseline           34.9°C
-Current            43.3°C
+All apps combined  +8.4°C
 ```
 
 必须标记为：

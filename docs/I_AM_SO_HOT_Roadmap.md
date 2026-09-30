@@ -184,6 +184,17 @@ SLEEP(8s) → 负载 total_cpu 0.51 触发 WATCH(2.5s)
 - τ 校准暂缓：散热阶段观测到 chassis 实际散热慢于 τ=60，
   未来需要时考虑双时间常数（fast/slow reservoir）而非单纯调 τ
 
+**展示层 v2.2（2026-09-30，产品讨论后定案）：**
+
+- 删除面板 Baseline 行。用户唯一的使用时刻是「设备热了」，此时的问题是
+  「谁干的」——Heat Share 回答它，Baseline 不回答；且残差 Baseline 的误差
+  恰在高负载时最大（被看时最不可信的数字不如不显示）
+- 恒等式原则改为 Σ Heat Share = 100%（天然成立，不依赖 g / 温度传感器）
+- +°C 保留（g 是全局缩放因子，影响绝对值但不影响排名），
+  合计行 All apps combined 不强行与 Current 对齐
+- 模型 baseline 保留内部用途：g 在线校准参照 + 面板文案状态分级
+- MonitorSnapshot.residualBaselineCelsius 移除
+
 **第二步实测验证（DEBUG CSV，2026-09-30）：**
 
 - g 初值 0.016：用首次 4 核压测数据离线拟合（范围 0.011–0.020，取中段中位数）

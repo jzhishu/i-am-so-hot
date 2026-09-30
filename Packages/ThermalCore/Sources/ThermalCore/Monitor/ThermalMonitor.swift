@@ -236,9 +236,7 @@ public final class ThermalMonitor {
             mode: currentMode,
             apps: apps,
             appsTotalDeltaC: totalDeltaC,
-            estimatedCelsius: estimatedCelsius,
-            // 残差 baseline（展示层）：构造上保证 Baseline + ΣApps = Current
-            residualBaselineCelsius: temperature.map { $0 - totalDeltaC }
+            estimatedCelsius: estimatedCelsius
         )
     }
 }
