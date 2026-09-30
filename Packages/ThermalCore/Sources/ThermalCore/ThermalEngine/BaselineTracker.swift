@@ -13,6 +13,11 @@ public struct BaselineTracker: Sendable {
     /// 当前 baseline（°C）
     public private(set) var baseline: Double
 
+    /// 首个有效温度直接作为 baseline（冷启动校准），
+    /// 避免硬编码初始值与设备实际 idle 温度不符——
+    /// 否则 baseline 高于实测温度时，所有 App 的 Estimated +°C 恒为 0。
+    public private(set) var isInitialized = false
+
     /// EMA 学习率（每次 idle 采样向实测温度靠近的比例）。
     /// 0.005 ≈ 200 次 idle 采样收敛 63%。
     public let alpha: Double
@@ -28,7 +33,13 @@ public struct BaselineTracker: Sendable {
     ///   - isIdle: 是否满足 idle 条件（低 CPU + thermalState nominal），
     ///     由调用方判定（技术方案 §11.3）
     public mutating func update(currentCelsius: Double?, isIdle: Bool) {
-        guard isIdle, let current = currentCelsius else { return }
+        guard let current = currentCelsius else { return }
+        if !isInitialized {
+            baseline = current
+            isInitialized = true
+            return
+        }
+        guard isIdle else { return }
         baseline = (1 - alpha) * baseline + alpha * current
     }
 }
