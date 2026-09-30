@@ -33,9 +33,19 @@ struct PopoverView: View {
 
     // MARK: - Header
 
+    /// 顶部文案随温度状态变化：44°C 时写 "I AM SO HOT" 是自相矛盾的。
+    private var headline: String {
+        guard let temp = snapshot.temperatureCelsius else { return "I AM SO HOT" }
+        let delta = temp - snapshot.baselineCelsius
+        if snapshot.thermalStateElevated && delta > 15 { return "I'M ON FIRE" }
+        if delta > 15 { return "I AM SO HOT" }
+        if delta > 5 { return "GETTING WARM" }
+        return "I'M COOL"
+    }
+
     private var header: some View {
         HStack {
-            Text("I AM SO HOT")
+            Text(headline)
                 .font(.headline)
             Spacer()
             Text(temperatureText)
@@ -67,7 +77,10 @@ struct PopoverView: View {
     private var stateText: String {
         if snapshot.thermalStateElevated { return "Hot" }
         guard let temp = snapshot.temperatureCelsius else { return "--" }
-        return temp - snapshot.baselineCelsius > 10 ? "Warm" : "Normal"
+        let delta = temp - snapshot.baselineCelsius
+        if delta > 15 { return "Hot" }
+        if delta > 5 { return "Warm" }
+        return "Normal"
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -93,6 +106,21 @@ struct PopoverView: View {
         }
     }
 
+    /// CPU 展示精度：小于 1% 时显示 "<1%"，避免四拾五入成 "CPU 0%"
+    ///（截图中 macOS CPU 0% 就是精度丢失造成的误解）。
+    private func cpuText(_ cpu: Double) -> String {
+        let percent = cpu * 100
+        if percent < 1 && percent > 0 { return "<1%" }
+        return String(format: "%.0f%%", percent)
+    }
+
+    /// 行内副标题：CPU + Heat Share。
+    /// Heat Share 是排序依据（热记忆水库，而非瞬时 CPU），
+    /// 必须展示出来，否则用户无法理解排名（PRD §13：最可信指标）。
+    private func subtitle(_ app: AppHeatInfo) -> String {
+        String(format: "CPU %@ · Heat %.0f%%", cpuText(app.cpu), app.heatShare * 100)
+    }
+
     private func appRow(_ app: AppHeatInfo) -> some View {
         HStack(alignment: .center, spacing: 8) {
             appIcon(app)
@@ -100,7 +128,7 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(app.name)
                     .lineLimit(1)
-                Text(String(format: "CPU %.0f%%", app.cpu * 100))
+                Text(subtitle(app))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

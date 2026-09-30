@@ -58,7 +58,7 @@ final class MonitorService {
     }
 
     func icon(for app: AppHeatInfo) -> NSImage? {
-        registry.icon(bundlePath: app.bundlePath)
+        registry.icon(appID: app.id, bundlePath: app.bundlePath)
     }
 
     // MARK: - 调度循环

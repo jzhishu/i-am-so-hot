@@ -120,6 +120,23 @@ SLEEP(8s) → 负载 total_cpu 0.51 触发 WATCH(2.5s)
 5. τ = 60s 为初始经验值，未用 CSV 数据做设备级校准
 6. Estimated +°C 依赖的 Baseline 为简单 idle EMA（v0.5 做完整动态学习）
 
+## v0.1 截图走查修复（2026-09-30）
+
+首次面板截图走查发现 8 个问题，已修复 7 个：
+
+| # | 问题 | 状态 |
+|---|---|---|
+| 1 | Cursor Helper (Plugin) 泄漏为独立条目（Electron helper 独立 bundleID 截胡 PID 直查） | ✅ 已修：AppRegistryMerger 按 bundlePath 嵌套归并 |
+| 2 | Baseline(45°C 硬编码) 高于实测温度，+°C 全部为 0 | ✅ 已修：BaselineTracker 冷启动校准 |
+| 3 | 排名依据不可见（CPU 11% 的排在 25% 前） | ✅ 已修：行内副标题展示 Heat Share |
+| 4 | macOS 显示 "CPU 0%" 误导 | ✅ 已修：<1% 时显示 "<1%" |
+| 5 | 部分 App 图标缺失 | ✅ 已修：优先 NSRunningApplication.icon |
+| 6 | 长名称截断突兀 | ✅ 已修：随问题 1 归并解决 |
+| 7 | Popover 点图标关不掉（.transient 重开缺陷）、弹出动画 | ✅ 已修：关闭时间截守卫 + animates=false + preferredContentSize |
+| 8 | 44°C 顶部却写 "I AM SO HOT" | ✅ 已修：标题随温度动态变化（I'M COOL / GETTING WARM / I AM SO HOT / I'M ON FIRE） |
+
+遗留观察项：macOS 系统进程 CPU 归并是否完整（问题 4 的根因排查，当前仅修了显示精度）。
+
 ---
 
 # 3. v0.1 — Core MVP

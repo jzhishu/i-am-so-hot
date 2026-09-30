@@ -10,13 +10,20 @@ final class RunningAppRegistry {
 
     private var iconCache: [String: NSImage] = [:]
 
-    /// 当前运行的用户可识别 App（排除纯后台 prohibited 进程）。
+    /// 当前运行的用户可识别 App（排除纯后台 prohibited 进程，
+    /// 并经 AppRegistryMerger 归并嵌套 bundle 的 Helper）。
     func currentApps() -> [AppIdentity] {
-        NSWorkspace.shared.runningApplications.compactMap { app in
+        let identities: [AppIdentity] = NSWorkspace.shared.runningApplications.compactMap { app in
             guard app.activationPolicy != .prohibited,
                   let bundleURL = app.bundleURL else { return nil }
+            let id = app.bundleIdentifier ?? bundleURL.path
+            // 图标直接用 NSRunningApplication.icon（比 icon(forFile:) 可靠），
+            // 归并时按 appID 缓存
+            if let nsIcon = app.icon {
+                iconCache[id] = nsIcon
+            }
             return AppIdentity(
-                id: app.bundleIdentifier ?? bundleURL.path,
+                id: id,
                 rootPid: app.processIdentifier,
                 bundleID: app.bundleIdentifier,
                 localizedName: app.localizedName
@@ -25,14 +32,16 @@ final class RunningAppRegistry {
                 executablePath: app.executableURL?.path
             )
         }
+        return AppRegistryMerger.merge(identities)
     }
 
-    /// App 图标（带缓存，bundlePath 为 nil 时返回 nil）
-    func icon(bundlePath: String?) -> NSImage? {
+    /// App 图标：优先注册时缓存的 NSRunningApplication.icon，
+    /// 降级 NSWorkspace.icon(forFile:)（带缓存）
+    func icon(appID: String, bundlePath: String?) -> NSImage? {
+        if let cached = iconCache[appID] { return cached }
         guard let bundlePath else { return nil }
-        if let cached = iconCache[bundlePath] { return cached }
         let icon = NSWorkspace.shared.icon(forFile: bundlePath)
-        iconCache[bundlePath] = icon
+        iconCache[appID] = icon
         return icon
     }
 
