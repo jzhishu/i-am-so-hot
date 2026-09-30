@@ -12,6 +12,10 @@ public struct ProcessSample: Sendable, Equatable {
     public let processName: String
     /// 两次采样间的 CPU 时间增量（秒）
     public let cpuTimeDelta: TimeInterval
+    /// 进程启动时间（epoch 秒）：PID reuse 检测——
+    /// macOS 会复用 PID，同一 PID 前后可能是不同进程，
+    /// 归属缓存与 CPU 差分遇到 startTime 变化必须失效
+    public let startTimeSeconds: UInt64
 
     public init(
         pid: pid_t,
@@ -19,7 +23,8 @@ public struct ProcessSample: Sendable, Equatable {
         responsiblePid: pid_t? = nil,
         executablePath: String? = nil,
         processName: String,
-        cpuTimeDelta: TimeInterval
+        cpuTimeDelta: TimeInterval,
+        startTimeSeconds: UInt64 = 0
     ) {
         self.pid = pid
         self.parentPid = parentPid
@@ -27,5 +32,6 @@ public struct ProcessSample: Sendable, Equatable {
         self.executablePath = executablePath
         self.processName = processName
         self.cpuTimeDelta = cpuTimeDelta
+        self.startTimeSeconds = startTimeSeconds
     }
 }

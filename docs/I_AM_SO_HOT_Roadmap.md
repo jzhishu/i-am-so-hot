@@ -74,7 +74,7 @@ v1.0  Predictive Thermal Monitor
 | 版本 | 状态 | 备注 |
 |---|---|---|
 | v0.1 | ✅ **已完成**（2026-09-29） | 本机端到端验证通过 |
-| v0.2 | ⬜ 未开始 | 下一阶段 |
+| v0.2 | 🔨 进行中（归属增强/PID reuse/压测验证已完成，见 §4 标注） | 当前阶段 |
 | v0.3 | ⬜ 未开始 | |
 | v0.5 | ⬜ 未开始 | |
 | v0.8 | ⬜ 未开始 | |
@@ -111,12 +111,24 @@ SLEEP(8s) → 负载 total_cpu 0.51 触发 WATCH(2.5s)
 - 构建：Debug / Release 均通过
 - 调试工具：`thermalprobe`（采集验证）、`/tmp/iamsohot-debug.csv`（热模型调参）
 
-## v0.1 已知遗留（进入 v0.2 待办）
+## v0.1 已知遗留（v0.2 处理状态）
 
-1. PID reuse 检测缺失（当前注册表变化时全量清缓存）
-2. ~~responsible PID / process coalition 归属未实现~~（✅ 2026-09-30 已实现：
-   有道的 WebKit 网页内容进程曾被误归 macOS，实测 responsible PID 可正确指回宿主）
-3. 自身 wakeups / 长时间能耗未做 30–60 分钟观测
+1. ~~PID reuse 检测缺失~~（✅ v0.2 已实现：启动时间戳检测 + 选择性缓存失效）
+2. ~~responsible PID / process coalition 归属未实现~~（✅ 已实现：
+   有道的 WebKit 网页内容进程曾被误归 macOS，实测 responsible PID 可正确指回宿主；
+   coalition 主要场景已被 responsible PID 覆盖，暂缓）
+3. ~~自身能耗观测~~（✅ v0.2 压测期间实测：CPU 均值 ~0.1%、内存 0.3%，符合约束）
+
+## v0.2 压测验证结论（2026-09-30）
+
+4 核 `yes` 压测 90 秒（从 Ghostty 终端发起）：
+
+- **归因正确**：Top App = Ghostty（Heat share 45% → 76%），未被 macOS / Other 吞掉
+- **温度响应**：45.0 → 52.6°C，热模型趋势正确
+- **衰减正常**：停止后 share 平滑下降（76% → 70%），无瞬间归零
+- **自身占用**：CPU 0.0–0.1%（偶发 spike 1.6%），内存 0.3%
+- **已知现象**：展示 Baseline 在高负载下随残差上浮（44.6 → 49.5），
+  因为 g 的低估误差被残差吸收——正是第三步 g/τ 在线校准要解决的问题
 4. ~~面板真实截图走查未完成~~（已完成两轮走查，问题见下表）
 5. ~~τ = 60s 为初始经验值~~（纳入热模型 v2 校准计划，见 §2.2）
 6. ~~Baseline 为简单 idle EMA~~（已被热模型 v2 取代，见 §2.2）
@@ -417,11 +429,13 @@ v0.1 明确不做：
 
 增加：
 
-- 更完整 Bundle 识别。
-- 更强 PPID fallback。
-- responsible PID。
-- process coalition。
-- 常见 XPC / helper 规则。
+- 更完整 Bundle 识别。✅（v0.1 bundlePath 归并）
+- 更强 PPID fallback。✅（v0.1 祖先进程追溯）
+- responsible PID。✅（2026-09-30，libSystem SPI 实测可用）
+- process coalition。⏸ 暂缓（主要场景已被 responsible PID 覆盖）
+- 常见 XPC / helper 规则。✅（嵌套 bundle 归并 + responsible PID）
+- PID reuse 检测。✅（2026-09-30，启动时间戳 + 选择性缓存失效）
+- 窗口相关性辅助。⏸ 暂缓（低收益高复杂度）
 
 ---
 

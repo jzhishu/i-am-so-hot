@@ -138,6 +138,29 @@ final class AppResolverTests: XCTestCase {
         XCTAssertEqual(result.appID, AppIdentity.other.id)
     }
 
+    func testSelectiveCacheInvalidationForPIDReuse() {
+        let resolver = makeResolver()
+        let p1 = sample(
+            1001, ppid: 1, name: "Google Chrome Helper",
+            path: "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper"
+        )
+        let p2 = sample(
+            1002, ppid: 1, name: "Google Chrome Helper (Renderer)",
+            path: "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper (Renderer)"
+        )
+        XCTAssertEqual(resolver.resolve(p1, allSamples: [1001: p1]).appID, chrome.id)
+        XCTAssertEqual(resolver.resolve(p2, allSamples: [1002: p2]).appID, chrome.id)
+
+        // 模拟 Chrome 退出：注册表移除后，缓存中的旧归属仍命中
+        resolver.updateRegistry([cursor])
+        XCTAssertEqual(resolver.resolve(p1, allSamples: [1001: p1]).appID, chrome.id)
+
+        // PID 1001 被复用 → 仅失效该 PID，重新解析落 Other；1002 缓存保留
+        resolver.invalidateCache(for: [1001])
+        XCTAssertEqual(resolver.resolve(p1, allSamples: [1001: p1]).appID, AppIdentity.other.id)
+        XCTAssertEqual(resolver.resolve(p2, allSamples: [1002: p2]).appID, chrome.id)
+    }
+
     // MARK: - 系统组件规则（PRD §8.3）
 
     func testSystemUIComponents() {

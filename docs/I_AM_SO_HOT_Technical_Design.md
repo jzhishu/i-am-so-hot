@@ -200,7 +200,8 @@ method: responsiblePID
 - 新 PID 出现。
 - App 启动。
 - App 退出。
-- PID reuse。
+- PID reuse（v0.2 已实现：进程启动时间戳 `pbi_start_tvsec` 变化 →
+  仅失效该 PID 缓存 `invalidateCache(for:)`，同时保护 CPU 差分不被复用污染）。
 - 缓存失效。
 
 后续采样直接：

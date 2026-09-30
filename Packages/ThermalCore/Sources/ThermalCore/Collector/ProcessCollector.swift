@@ -28,6 +28,11 @@ public final class ProcessCollector {
 
     /// 上次采样的每进程累计 CPU 时间（纳秒）与采样时刻，用于差分。
     private var previousCPUTimes: [pid_t: (cpuTime: UInt64, at: Date)] = [:]
+    /// 上次采样的每进程启动时间，用于 PID reuse 检测。
+    private var previousStartTimes: [pid_t: UInt64] = [:]
+    /// 本次采样发现需要清归属缓存的 PID（PID reuse：同 PID 启动时间变化）。
+    /// 进程退出造成的缓存脏数据由注册表变化时的全量失效覆盖。
+    public private(set) var cacheStalePIDs: [pid_t] = []
 
     public init() {}
 
@@ -40,6 +45,7 @@ public final class ProcessCollector {
 
         var newCPUTimes: [pid_t: (cpuTime: UInt64, at: Date)] = [:]
         newCPUTimes.reserveCapacity(pids.count)
+        var stalePIDs: [pid_t] = []
 
         for pid in pids {
             guard pid > 0 else { continue }
@@ -64,6 +70,7 @@ public final class ProcessCollector {
                 return String(cString: base.assumingMemoryBound(to: CChar.self))
             }
             let ppid = pid_t(bsdInfo.pbi_ppid)
+            let startTime = UInt64(bsdInfo.pbi_start_tvsec)
 
             // 可执行路径（部分系统进程无路径，返回 nil 属正常）
             let path = executablePath(for: pid)
@@ -71,9 +78,16 @@ public final class ProcessCollector {
             // responsible PID（WebKit XPC 等跨 bundle 子进程归属，技术方案 §4.3）
             let responsible = responsibility_get_pid_responsible_for_pid(pid)
 
+            // PID reuse 检测：同一 PID 启动时间变化 = 旧进程已退出、PID 被复用
+            if let prevStart = previousStartTimes[pid], prevStart != startTime {
+                stalePIDs.append(pid)
+            }
+
             // CPU 差分（mach ticks -> 秒）
+            // 仅当确认非 PID 复用时，与上次采样的差分才有意义
             let delta: TimeInterval
-            if let prev = previousCPUTimes[pid], cpuTime >= prev.cpuTime {
+            if let prev = previousCPUTimes[pid], cpuTime >= prev.cpuTime,
+               previousStartTimes[pid] == startTime {
                 delta = MachTime.ticksToSeconds(cpuTime - prev.cpuTime)
             } else {
                 delta = 0
@@ -85,11 +99,17 @@ public final class ProcessCollector {
                 responsiblePid: responsible > 0 ? responsible : nil,
                 executablePath: path,
                 processName: name,
-                cpuTimeDelta: delta
+                cpuTimeDelta: delta,
+                startTimeSeconds: startTime
             ))
         }
 
         previousCPUTimes = newCPUTimes
+        previousStartTimes = Dictionary(
+            samples.map { ($0.pid, $0.startTimeSeconds) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        cacheStalePIDs = stalePIDs
         return samples
     }
 

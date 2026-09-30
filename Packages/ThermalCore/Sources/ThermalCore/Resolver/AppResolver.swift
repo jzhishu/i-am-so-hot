@@ -44,9 +44,13 @@ public final class AppResolver {
     }
 
     /// 注册表变化（App 启动/退出）后调用，清空归属缓存（§4.5）。
-    /// TODO(v0.2): PID reuse 检测，替代全量清空。
     public func invalidateCache() {
         cache.removeAll()
+    }
+
+    /// PID reuse 检测（§4.5）：仅失效指定 PID 的缓存，避免全量清空。
+    public func invalidateCache(for pids: [pid_t]) {
+        for pid in pids { cache[pid] = nil }
     }
 
     public func resolve(_ sample: ProcessSample, allSamples: [pid_t: ProcessSample]) -> ProcessOwnership {

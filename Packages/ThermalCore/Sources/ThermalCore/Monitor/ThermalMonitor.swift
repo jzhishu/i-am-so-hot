@@ -145,6 +145,10 @@ public final class ThermalMonitor {
         if collectDetails {
             let detailedDelta = lastDetailedTick.map { now.timeIntervalSince($0) } ?? tickDelta
             let samples = collector.collectSample(now: now).filter { $0.pid != ownPID }
+            // PID reuse：仅失效被复用 PID 的归属缓存（§4.5），避免全量清空
+            if !collector.cacheStalePIDs.isEmpty {
+                resolver.invalidateCache(for: collector.cacheStalePIDs)
+            }
             let allSamples = Dictionary(samples.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
             lastAppSamples = AppAggregator.aggregate(
                 samples: samples,
