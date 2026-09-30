@@ -55,4 +55,28 @@ final class SleepRefillTests: XCTestCase {
         )
         XCTAssertTrue(scores.isEmpty)
     }
+
+    // MARK: - 微小份额蒸发（防止长尾 App 被回填永养）
+
+    func testRefillEvictsTinySharesAndRenormalizes() {
+        // tiny 仅 0.5% share，不参与回填；剩余归一化后 a 独占全部功率
+        let scores = ThermalMonitor.sleepRefillScores(
+            totalCPU: 0.2,
+            coreCount: 10,
+            shares: ["a": 0.495, "b": 0.5, "tiny": 0.005]
+        )
+        XCTAssertNil(scores["tiny"], "share < 1% 的 App 不应被回填续命")
+        // a:b = 0.495:0.5 归一化，总功率 2 核
+        XCTAssertEqual(scores["a"]!, 2.0 * 0.495 / 0.995, accuracy: 1e-9)
+        XCTAssertEqual(scores["b"]!, 2.0 * 0.5 / 0.995, accuracy: 1e-9)
+    }
+
+    func testRefillEmptyWhenAllSharesTiny() {
+        let scores = ThermalMonitor.sleepRefillScores(
+            totalCPU: 0.2,
+            coreCount: 10,
+            shares: ["a": 0.004, "b": 0.003]
+        )
+        XCTAssertTrue(scores.isEmpty)
+    }
 }

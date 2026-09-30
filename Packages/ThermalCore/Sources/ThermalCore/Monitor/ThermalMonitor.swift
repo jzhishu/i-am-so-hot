@@ -43,8 +43,11 @@ public final class ThermalMonitor {
     private var lastAppSamples: [String: AppSample] = [:]
     /// SLEEP 连续 tick 数（重播种计时）
     private var sleepTickCount = 0
-    /// SLEEP 下每 N 个 tick 做一次详细采样刷新 share 分布（8s × 60 ≈ 8 分钟）
-    private let sleepReseedInterval = 60
+    /// SLEEP 下每 N 个 tick 做一次详细采样刷新 share 分布。
+    /// 8s × 4 ≈ 32s：一次采集约几毫秒 CPU，占空比 ~0.03%，远低于预算，
+    /// 换来分布新鲜度——回填是分布不动点，不刷新就会把「进入 SLEEP 那一刻
+    /// 热的 App」永久养在水库里（热贡献不衰退，违反热记忆语义）。
+    private let sleepReseedInterval = 4
     /// share 分布是否已建立。首次详细采样所有进程 CPU 差分为 0（无历史基准），
     /// 必须采到第二帧才有有效分布，因此播种是一个过程而不是一次采样。
     private var distributionSeeded = false
@@ -70,6 +73,8 @@ public final class ThermalMonitor {
 
     /// SLEEP 模式水库回填（纯函数，便于单测）：
     /// 把全机总功率（totalCPU × 核数）按上次已知的 share 分布拆分。
+    /// share < 1% 的微小 App 不续命（让其自然衰减蒸发，避免长尾被回填永养）。
+    /// 过滤后归一化，保证 ΣH 仍朝 P×τ 稳态收敛。
     /// 分布失效（水库为空）时返回空，不产生臆造数据。
     static func sleepRefillScores(
         totalCPU: Double,
@@ -77,8 +82,11 @@ public final class ThermalMonitor {
         shares: [String: Double]
     ) -> [String: Double] {
         guard totalCPU > 0, coreCount > 0, !shares.isEmpty else { return [:] }
+        let significant = shares.filter { $0.value >= 0.01 }
+        guard !significant.isEmpty else { return [:] }
+        let sum = significant.values.reduce(0, +)
         let totalPower = totalCPU * Double(coreCount)
-        return shares.mapValues { $0 * totalPower }
+        return significant.mapValues { $0 / sum * totalPower }
     }
 
     /// 注入 App 注册表（App 启动/退出事件时调用，并清空归属缓存）。

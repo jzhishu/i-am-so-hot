@@ -176,6 +176,9 @@ SLEEP(8s) → 负载 total_cpu 0.51 触发 WATCH(2.5s)
    δ 学习目标改为 die − slow − Σg·H，恒等式构造上自洽
 3. 实测（1 核负载 + SLEEP 模式）：apps_sum_delta 0→1.6°C 爬向稳态不再归零，
    est_temp 45.8 vs 实测 45.6（误差 ~0.2°C），baseline 44.2 不被污染
+4. SLEEP 回填分布冻结（第三、四次截图暴露：Chrome/macOS 低 CPU 高 Heat 居首）：
+   回填按当前 share 分配是不动点，热贡献不衰退 → 重播种从 8 分钟缩到 ~32s
+   （占空比 ~0.03%，远低于预算），且 share < 1% 的长尾不再续命（自然蒸发）
 
 **第一步实测验证（DEBUG CSV，2026-09-30）：**
 
