@@ -15,10 +15,16 @@ log("== I AM SO HOT · thermalprobe ==")
 // 1. 温度
 log("[1] IOHID temperature ...")
 let provider = IOHIDTemperatureProvider()
-if let temp = provider.currentCelsius() {
-    log(String(format: "Temperature: %.1f°C", temp))
+let reading = provider.read()
+if let temp = reading.dieCelsius {
+    log(String(format: "Temperature (die): %.1f°C", temp))
 } else {
     log("Temperature: unavailable (nil)")
+}
+if let slow = reading.slowAnchorCelsius {
+    log(String(format: "Slow anchor (baseline 物理锚点): %.1f°C", slow))
+} else {
+    log("Slow anchor: unavailable")
 }
 
 // 1.5 传感器清点（模型设计验证）

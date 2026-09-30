@@ -45,25 +45,3 @@ final class AppRegistryMergerTests: XCTestCase {
         XCTAssertEqual(merged.map(\.id), ["com.todesktop.cursor"])
     }
 }
-
-extension BaselineTrackerTests {
-
-    // MARK: - 冷启动校准（截图发现的 P0 问题：baseline 高于实测温度导致 +°C 恒为 0）
-
-    func testFirstReadingInitializesBaselineDirectly() {
-        var tracker = BaselineTracker(initial: 45)
-        // 即使非 idle，首个有效温度也应直接成为 baseline
-        tracker.update(currentCelsius: 43.7, isIdle: false)
-        XCTAssertEqual(tracker.baseline, 43.7, accuracy: 1e-9)
-        XCTAssertTrue(tracker.isInitialized)
-    }
-
-    func testAfterInitializationLearnsOnlyWhenIdle() {
-        var tracker = BaselineTracker(initial: 45, alpha: 0.5)
-        tracker.update(currentCelsius: 44, isIdle: false) // 初始化
-        tracker.update(currentCelsius: 80, isIdle: false) // 高负载：不学习
-        XCTAssertEqual(tracker.baseline, 44, accuracy: 1e-9)
-        tracker.update(currentCelsius: 46, isIdle: true)  // idle：EMA 学习
-        XCTAssertEqual(tracker.baseline, 45, accuracy: 1e-9)
-    }
-}

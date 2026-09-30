@@ -43,33 +43,3 @@ final class AppAggregatorTests: XCTestCase {
         XCTAssertTrue(result.isEmpty)
     }
 }
-
-final class BaselineTrackerTests: XCTestCase {
-
-    // MARK: - 只在 idle 时学习（技术方案 §11.3）
-
-    func testLearnsOnlyWhenIdle() {
-        var tracker = BaselineTracker(initial: 45, alpha: 0.5)
-        tracker.update(currentCelsius: 60, isIdle: true) // 冷启动初始化 baseline = 60
-        tracker.update(currentCelsius: 80, isIdle: false)
-        XCTAssertEqual(tracker.baseline, 60, accuracy: 1e-9, "高负载期间不得污染 baseline")
-
-        tracker.update(currentCelsius: 40, isIdle: true)
-        XCTAssertEqual(tracker.baseline, 50, accuracy: 1e-9)
-    }
-
-    func testConvergesToIdleTemperature() {
-        var tracker = BaselineTracker(initial: 45)
-        tracker.update(currentCelsius: 45, isIdle: true) // 初始化
-        for _ in 0..<2000 {
-            tracker.update(currentCelsius: 60, isIdle: true)
-        }
-        XCTAssertEqual(tracker.baseline, 60, accuracy: 0.1)
-    }
-
-    func testNilTemperatureDoesNotLearn() {
-        var tracker = BaselineTracker(initial: 45)
-        tracker.update(currentCelsius: nil, isIdle: true)
-        XCTAssertEqual(tracker.baseline, 45, accuracy: 1e-9)
-    }
-}

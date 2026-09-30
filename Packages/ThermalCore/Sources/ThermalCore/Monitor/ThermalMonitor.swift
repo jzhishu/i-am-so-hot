@@ -70,7 +70,8 @@ public final class ThermalMonitor {
     public func tick(now: Date = Date()) -> MonitorSnapshot {
         // ── 1. 廉价指标 ─────────────────────────────────────────────
         let totalCPU = cpuSampler.totalCPU() ?? 0
-        let temperature = temperatureProvider.currentCelsius()
+        let reading = temperatureProvider.read()
+        let temperature = reading.dieCelsius
         let thermalElevated = ProcessInfo.processInfo.thermalState != .nominal
 
         // ── 2. 采样模式 ─────────────────────────────────────────────
@@ -82,9 +83,14 @@ public final class ThermalMonitor {
             baselineCelsius: baseline.baseline
         )
 
-        // ── 3. Baseline 学习（只在 idle 时，§11.3）──────────────────
+        // ── 3. Baseline（热模型 v2：慢层锚点 + 不对称跟踪，§11）────────
         let isIdle = totalCPU < 0.10 && !thermalElevated
-        baseline.update(currentCelsius: temperature, isIdle: isIdle)
+        baseline.update(
+            die: temperature,
+            slowAnchor: reading.slowAnchorCelsius,
+            isIdle: isIdle,
+            now: now
+        )
 
         // ── 4. 详细采集（WATCH / LIVE）─────────────────────────────
         let tickDelta = lastTick.map { now.timeIntervalSince($0) } ?? currentMode.interval
