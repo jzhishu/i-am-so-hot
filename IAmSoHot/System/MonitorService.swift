@@ -14,10 +14,15 @@ final class MonitorService {
 
     private let log = Logger(subsystem: "com.jzhishu.iamsohot", category: "monitor")
 
-    private let monitor = ThermalMonitor()
+    private let monitor: ThermalMonitor
     private let registry = RunningAppRegistry()
     private var timer: DispatchSourceTimer?
     private var workspaceObservers: [NSObjectProtocol] = []
+
+    /// g 校准值持久化（UserDefaults）：重启后延续学习成果
+    private static let gainDefaultsKey = "thermalGain.v1"
+    private var lastSavedGain: Double = 0
+    private var lastGainSaveTime: Date = .distantPast
 
     private(set) var snapshot: MonitorSnapshot?
 
@@ -25,6 +30,9 @@ final class MonitorService {
     var onSnapshot: ((MonitorSnapshot) -> Void)?
 
     init() {
+        let savedGain = UserDefaults.standard.object(forKey: Self.gainDefaultsKey) as? Double
+        monitor = ThermalMonitor(initialGain: savedGain ?? 0.016)
+        lastSavedGain = savedGain ?? 0.016
         refreshRegistry()
         observeWorkspaceEvents()
     }
@@ -70,6 +78,7 @@ final class MonitorService {
         #if DEBUG
         debugExport(snapshot)
         #endif
+        persistGainIfNeeded()
         log.info(
             "tick: mode=\(snapshot.mode.rawValue, privacy: .public) temp=\(snapshot.temperatureCelsius ?? -1, format: .fixed(precision: 1), privacy: .public)°C cpu=\(snapshot.totalCPU, format: .fixed(precision: 2), privacy: .public) apps=\(snapshot.apps.count, privacy: .public)"
         )
@@ -95,12 +104,12 @@ final class MonitorService {
     private func debugExport(_ snapshot: MonitorSnapshot) {
         let url = URL(fileURLWithPath: "/tmp/iamsohot-debug.csv")
         if !FileManager.default.fileExists(atPath: url.path) {
-            try? "time,mode,temp,total_cpu,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline\n"
+            try? "time,mode,temp,total_cpu,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain\n"
                 .write(to: url, atomically: true, encoding: .utf8)
         }
         let top = snapshot.apps.first
         let line = String(
-            format: "%.0f,%@,%.1f,%.3f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f\n",
+            format: "%.0f,%@,%.1f,%.3f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f\n",
             Date().timeIntervalSince1970,
             snapshot.mode.rawValue,
             snapshot.temperatureCelsius ?? -1,
@@ -111,7 +120,8 @@ final class MonitorService {
             top?.heatShare ?? 0,
             snapshot.appsTotalDeltaC,
             snapshot.estimatedCelsius ?? -1,
-            snapshot.residualBaselineCelsius ?? -1
+            snapshot.residualBaselineCelsius ?? -1,
+            monitor.thermalGain
         )
         if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()
@@ -120,6 +130,21 @@ final class MonitorService {
         }
     }
     #endif
+
+    // MARK: - g 校准值持久化（热模型 v2 第三步）
+
+    /// 节流保存：校准值变化超过 0.0005 且距上次保存超过 60 秒才写盘。
+    /// UserDefaults 写入极廉价，但避免每个 tick 都同步。
+    private func persistGainIfNeeded() {
+        let gain = monitor.thermalGain
+        let now = Date()
+        guard abs(gain - lastSavedGain) > 0.0005,
+              now.timeIntervalSince(lastGainSaveTime) > 60 else { return }
+        UserDefaults.standard.set(gain, forKey: Self.gainDefaultsKey)
+        lastSavedGain = gain
+        lastGainSaveTime = now
+        log.info("thermal gain calibrated: \(gain, format: .fixed(precision: 4), privacy: .public)")
+    }
 
     // MARK: - Event Monitor
 

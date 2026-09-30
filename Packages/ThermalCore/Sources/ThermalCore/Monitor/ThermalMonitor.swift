@@ -57,18 +57,26 @@ public final class ThermalMonitor {
     public var currentMode: SamplingMode { modeController.mode }
 
     /// 温升系数 g（°C / 单位热储量）——热模型 v2 §12.1。
-    /// 初值 0.016：2026-09-30 用本机 4 核压测 CSV 离线拟合（范围 0.011–0.020，
-    /// 取中段中位数；与 τ=60 配对，第三步在线联合校准）。
-    public var thermalGain: Double = 0.016
+    /// 初值 0.016：2026-09-30 用本机 4 核压测 CSV 离线拟合（范围 0.011–0.020）。
+    /// 第三步在线校准（§14）：RLS 回归（实测温度 − 模型baseline）≈ g × ΣH，
+    /// 校准值由 GainCalibrator 维护，App 层负责持久化。
+    public var thermalGain: Double { calibrator.gain }
+    private var calibrator: GainCalibrator
 
     public init(
         temperatureProvider: TemperatureProvider = IOHIDTemperatureProvider(),
         tau: Double = 60,
-        initialBaseline: Double = 45
+        initialBaseline: Double = 45,
+        initialGain: Double = 0.016
     ) {
         self.temperatureProvider = temperatureProvider
         self.engine = ThermalEngine(tau: tau)
         self.baseline = BaselineTracker(initial: initialBaseline)
+        // 恢复持久化的校准值时给予较小初始方差（信任历史校准）
+        self.calibrator = GainCalibrator(
+            initial: initialGain,
+            variance: initialGain == 0.016 ? 1e-4 : 1e-6
+        )
     }
 
     /// SLEEP 模式水库回填（纯函数，便于单测）：
@@ -181,9 +189,21 @@ public final class ThermalMonitor {
         }
         engine.ingest(powerScores: powerScores, deltaTime: max(tickDelta, 0.1))
 
+        // ── 5.5 g 在线校准（热模型 v2 第三步，§14）───────────────
+        // 实测温度为 ground truth：(T − 模型baseline) ≈ g × ΣH。
+        // 校准时用的是注入后的最新水库，与展示口径一致。
+        let totalHeat = engine.reservoirs.values.reduce(0, +)
+        calibrator.update(
+            temperature: temperature,
+            modelBaseline: baseline.baseline,
+            totalHeat: totalHeat,
+            totalCPU: totalCPU,
+            interval: tickDelta
+        )
+
         let shares = engine.heatShares()
         // 热模型 v2：ΔT_i = g × H_i（§12.1）
-        let deltaCs = engine.estimatedDeltaCs(gain: thermalGain)
+        let deltaCs = engine.estimatedDeltaCs(gain: calibrator.gain)
         let totalDeltaC = deltaCs.values.reduce(0, +)
         let estimatedCelsius = temperature != nil || totalDeltaC > 0
             ? baseline.baseline + totalDeltaC
