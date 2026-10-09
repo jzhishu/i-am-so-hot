@@ -38,7 +38,14 @@ public final class ProcessCollector {
 
     /// 采集当前全部进程快照。`cpuTimeDelta` 为相对上次采样的增量（秒）。
     /// 首次采样所有进程 delta 为 0（建立基准）。
-    public func collectSample(now: Date = Date()) -> [ProcessSample] {
+    /// 采集当前全部进程快照。`cpuTimeDelta` 为相对上次采样的增量（秒）。
+    /// 首次采样所有进程 delta 为 0（建立基准）。
+    /// - Parameter gpuDeltas: 由调用方（ThermalMonitor）统一采样的
+    ///   per-process GPU 时间增量，按 pid 填入对应 sample。
+    public func collectSample(
+        now: Date = Date(),
+        gpuDeltas: [pid_t: TimeInterval] = [:]
+    ) -> [ProcessSample] {
         let pids = listAllPIDs()
         var samples: [ProcessSample] = []
         samples.reserveCapacity(pids.count)
@@ -100,6 +107,7 @@ public final class ProcessCollector {
                 executablePath: path,
                 processName: name,
                 cpuTimeDelta: delta,
+                gpuTimeDelta: gpuDeltas[pid] ?? 0,
                 startTimeSeconds: startTime
             ))
         }

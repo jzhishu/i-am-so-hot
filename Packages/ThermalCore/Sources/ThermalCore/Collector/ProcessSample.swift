@@ -12,6 +12,10 @@ public struct ProcessSample: Sendable, Equatable {
     public let processName: String
     /// 两次采样间的 CPU 时间增量（秒）
     public let cpuTimeDelta: TimeInterval
+    /// 两次采样间的 GPU 时间增量（秒，v0.5 GPU Attribution）。
+    /// 来源：AGXDeviceUserClient.accumulatedGPUTime 差分（GPUSampler）。
+    /// 无 GPU client 或枚举失败的进程为 0。
+    public let gpuTimeDelta: TimeInterval
     /// 进程启动时间（epoch 秒）：PID reuse 检测——
     /// macOS 会复用 PID，同一 PID 前后可能是不同进程，
     /// 归属缓存与 CPU 差分遇到 startTime 变化必须失效
@@ -24,6 +28,7 @@ public struct ProcessSample: Sendable, Equatable {
         executablePath: String? = nil,
         processName: String,
         cpuTimeDelta: TimeInterval,
+        gpuTimeDelta: TimeInterval = 0,
         startTimeSeconds: UInt64 = 0
     ) {
         self.pid = pid
@@ -32,6 +37,7 @@ public struct ProcessSample: Sendable, Equatable {
         self.executablePath = executablePath
         self.processName = processName
         self.cpuTimeDelta = cpuTimeDelta
+        self.gpuTimeDelta = gpuTimeDelta
         self.startTimeSeconds = startTimeSeconds
     }
 }

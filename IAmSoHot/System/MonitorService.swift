@@ -104,16 +104,17 @@ final class MonitorService {
     private func debugExport(_ snapshot: MonitorSnapshot) {
         let url = URL(fileURLWithPath: "/tmp/iamsohot-debug.csv")
         if !FileManager.default.fileExists(atPath: url.path) {
-            try? "time,mode,temp,total_cpu,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain\n"
+            try? "time,mode,temp,total_cpu,total_gpu,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain\n"
                 .write(to: url, atomically: true, encoding: .utf8)
         }
         let top = snapshot.apps.first
         let line = String(
-            format: "%.0f,%@,%.1f,%.3f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f\n",
+            format: "%.0f,%@,%.1f,%.3f,%.3f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f\n",
             Date().timeIntervalSince1970,
             snapshot.mode.rawValue,
             snapshot.temperatureCelsius ?? -1,
             snapshot.totalCPU,
+            snapshot.totalGPU,
             snapshot.baselineCelsius,
             snapshot.apps.count,
             top?.name ?? "-",

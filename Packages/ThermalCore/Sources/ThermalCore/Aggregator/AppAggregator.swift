@@ -7,13 +7,17 @@ public struct AppSample: Sendable {
     /// 聚合 CPU（核数口径，1.0 = 一个核满载，可超过 1），
     /// 与 Activity Monitor 的 %CPU 口径一致。
     public private(set) var cpu: Double
+    /// 聚合 GPU（v0.5，1.0 = GPU 全部执行单元满载），
+    /// 与 Activity Monitor 的 %GPU 口径一致。
+    public private(set) var gpu: Double
 
     public var processCount: Int { processes.count }
 
-    public init(appID: String, processes: [ProcessSample], cpu: Double) {
+    public init(appID: String, processes: [ProcessSample], cpu: Double, gpu: Double = 0) {
         self.appID = appID
         self.processes = processes
         self.cpu = cpu
+        self.gpu = gpu
     }
 }
 
@@ -31,21 +35,23 @@ public enum AppAggregator {
         resolve: (ProcessSample) -> ProcessOwnership
     ) -> [String: AppSample] {
         guard interval > 0 else { return [:] }
-        var byApp: [String: (processes: [ProcessSample], cpu: Double)] = [:]
+        var byApp: [String: (processes: [ProcessSample], cpu: Double, gpu: Double)] = [:]
 
         for sample in samples {
             let ownership = resolve(sample)
             let cpu = sample.cpuTimeDelta / interval
-            var entry = byApp[ownership.appID] ?? ([], 0)
+            let gpu = sample.gpuTimeDelta / interval
+            var entry = byApp[ownership.appID] ?? ([], 0, 0)
             entry.processes.append(sample)
             entry.cpu += cpu
+            entry.gpu += gpu
             byApp[ownership.appID] = entry
         }
 
         var result: [String: AppSample] = [:]
         result.reserveCapacity(byApp.count)
         for (appID, entry) in byApp {
-            result[appID] = AppSample(appID: appID, processes: entry.processes, cpu: entry.cpu)
+            result[appID] = AppSample(appID: appID, processes: entry.processes, cpu: entry.cpu, gpu: entry.gpu)
         }
         return result
     }

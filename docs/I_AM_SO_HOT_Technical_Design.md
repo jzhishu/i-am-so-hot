@@ -403,6 +403,33 @@ P_i(t)=C_i
 
 只用于首版相对归因，必须通过实测校准。
 
+### 8.2 GPU 采集落地（v0.5，2026-10-09 实测）
+
+per-process GPU 数据源调研结论（M2 Pro，无 root）：
+
+- **已采用**：IORegistry `AGXDeviceUserClient` 的 `IOUserClientCreator`（pid）
+  + `AppUsage[].accumulatedGPUTime`（纳秒）。按 pid 求和 + 差分，
+  与 CPU 时间的差分模式同构。枚举成本实测 0.47ms / ~53 client。
+  踩坑：client 条目是 `!registered` 状态，`IOServiceMatching("AGXDeviceUserClient")`
+  匹配不到，必须先匹配 `IOAccelerator` 再遍历子节点。
+- 备用：IOReport `libIOReport.dylib` “Energy Model” 组含设备级
+  `CPU Energy` / `GPU Energy` 通道（`IOReportCopyChannelsInGroup` 订阅 + 差分），
+  可用于 Device Calibration 标定 w_g；per-process 能量需 root，不可用。
+- 放弃：IOHID 0xFF08 PMU 电压/电流轨道（设备特定映射、无统一口径）。
+
+权重初值：
+
+```text
+w_c = 1
+w_g = 0.5 × 核数   （GPU 满载功耗 ≈ CPU 满载的一半的经验估计）
+```
+
+w_g 待 Device Calibration 用设备级 CPU/GPU Energy 实测标定；
+g 在线校准会吸收全局缩放误差，但 w_g 不准会导致 GPU 负载时 share 失真。
+
+SLEEP 回填同步升级：总功率 = totalCPU × 核数 + w_g × GPU busy，
+覆盖视频播放等「低 CPU 高 GPU」场景。
+
 ---
 
 ## 9. 热记忆模型

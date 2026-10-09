@@ -80,7 +80,7 @@ v1.0  Predictive Thermal Monitor
 | v0.1 | ✅ 已完成（2026-09-29） | 本机端到端验证通过 |
 | v0.2 | ✅ 已完成（2026-09-30） | 归属增强 / PID reuse / 压测验证 / 自身能耗达标 |
 | v0.3 | ✅ 已完成（2026-09-30） | 随热模型 v2 重写落地：热水库 / Heat Share / +°C |
-| v0.5 | 🔨 进行中 | 动态 Baseline ✅ / g 在线校准 ✅ / 双时间常数 ✅；剩 GPU、历史记录 |
+| v0.5 | 🔨 进行中 | 动态 Baseline ✅ / g 在线校准 ✅ / 双时间常数 ✅ / GPU Attribution ✅（2026-10-09）；剩 w_g 标定、历史记录 |
 | v0.8 | ⬜ 未开始 | |
 | v1.0 | ⬜ 未开始 | 目标：功能完整，本地长期运行验证 |
 
@@ -715,7 +715,13 @@ Slow Thermal Reservoir
 
 ### GPU Attribution
 
-加入 GPU contribution。
+✅ 已实现（2026-10-09）：per-process GPU 时间采集（IORegistry AGXDeviceUserClient
+差分，无 root，0.47ms/次）→ 复用 AppResolver 归属 → P = CPU + w_g×GPU。
+w_g 初值 0.5×核数（待 Device Calibration 用 IOReport 设备级能量标定）。
+SLEEP 回填同步支持 GPU busy 总量。
+
+验证：Metal compute 压测实测 GPU busy 98.8% 被捕获、归因 Other、
+进入热模型；自身开销占空比 ~0.006%（远低于预算）。
 
 目标覆盖：
 

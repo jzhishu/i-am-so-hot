@@ -3,8 +3,8 @@ import XCTest
 
 final class AppAggregatorTests: XCTestCase {
 
-    private func sample(_ pid: pid_t, cpuDelta: TimeInterval) -> ProcessSample {
-        ProcessSample(pid: pid, parentPid: 1, processName: "p\(pid)", cpuTimeDelta: cpuDelta)
+    private func sample(_ pid: pid_t, cpuDelta: TimeInterval, gpuDelta: TimeInterval = 0) -> ProcessSample {
+        ProcessSample(pid: pid, parentPid: 1, processName: "p\(pid)", cpuTimeDelta: cpuDelta, gpuTimeDelta: gpuDelta)
     }
 
     // MARK: - Chrome 多进程聚合（PRD §7.1 核心场景）
@@ -41,5 +41,29 @@ final class AppAggregatorTests: XCTestCase {
             ProcessOwnership(appID: "a", confidence: 1, method: .runningApplication)
         }
         XCTAssertTrue(result.isEmpty)
+    }
+
+    // MARK: - GPU 聚合（v0.5）
+
+    func testGPUAggregatesAcrossProcesses() {
+        // Chrome Main 0.1s GPU + GPU Process 0.4s GPU，1s 间隔 → 0.5（50% busy）
+        let samples = [
+            sample(1, cpuDelta: 0.2, gpuDelta: 0.1),
+            sample(2, cpuDelta: 0.0, gpuDelta: 0.4),
+        ]
+        let result = AppAggregator.aggregate(samples: samples, interval: 1) { _ in
+            ProcessOwnership(appID: "com.google.Chrome", confidence: 1, method: .sameBundle)
+        }
+        let chrome = result["com.google.Chrome"]!
+        XCTAssertEqual(chrome.gpu, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(chrome.cpu, 0.2, accuracy: 1e-9)
+    }
+
+    func testGPUDefaultsToZero() {
+        // 无 GPU client 的进程（绝大多数）gpu = 0
+        let result = AppAggregator.aggregate(samples: [sample(1, cpuDelta: 0.1)], interval: 1) { _ in
+            ProcessOwnership(appID: "a", confidence: 1, method: .runningApplication)
+        }
+        XCTAssertEqual(result["a"]!.gpu, 0)
     }
 }

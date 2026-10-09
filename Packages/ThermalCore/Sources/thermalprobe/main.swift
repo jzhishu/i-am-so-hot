@@ -56,4 +56,22 @@ for s in top {
     log("  \(s.processName) (pid \(s.pid)) cpu=\(String(format: "%.2f", s.cpuTimeDelta))s")
 }
 log("Total processes: \(samples.count)")
+
+// 4. Per-process GPU Top 5（v0.5：AGXDeviceUserClient.accumulatedGPUTime 差分）
+log("[4] process GPU ...")
+let gpuSampler = GPUSampler()
+_ = gpuSampler.gpuTimeDeltas()
+Thread.sleep(forTimeInterval: 1)
+let gpuDeltas = gpuSampler.gpuTimeDeltas()
+let gpuTop = gpuDeltas.sorted { $0.value > $1.value }.prefix(5)
+if gpuSampler.isAvailable {
+    log("Top 5 processes by GPU (last 1s):")
+    for (pid, delta) in gpuTop {
+        let name = samples.first { $0.pid == pid }?.processName ?? "?"
+        log("  \(name) (pid \(pid)) gpu=\(String(format: "%.2f", delta))s")
+    }
+    log("GPU clients with delta: \(gpuDeltas.count)")
+} else {
+    log("GPU sampling unavailable (enumeration failed)")
+}
 log("== done ==")

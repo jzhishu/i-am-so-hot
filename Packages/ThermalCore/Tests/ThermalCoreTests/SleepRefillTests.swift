@@ -79,4 +79,29 @@ final class SleepRefillTests: XCTestCase {
         )
         XCTAssertTrue(scores.isEmpty)
     }
+
+    // MARK: - GPU 回填（v0.5：视频播放等低 CPU 高 GPU 场景）
+
+    func testRefillIncludesGPUPower() {
+        // CPU 空闲但 GPU 50% busy：总功率 = 0×10 + 0.5×6 = 3，按 share 拆分
+        let scores = ThermalMonitor.sleepRefillScores(
+            totalCPU: 0,
+            coreCount: 10,
+            totalGPU: 0.5,
+            gpuWeight: 6,
+            shares: ["videoApp": 1.0]
+        )
+        XCTAssertEqual(scores["videoApp"]!, 3.0, accuracy: 1e-9)
+    }
+
+    func testRefillEmptyWhenCPUAndGPUBothIdle() {
+        let scores = ThermalMonitor.sleepRefillScores(
+            totalCPU: 0,
+            coreCount: 10,
+            totalGPU: 0,
+            gpuWeight: 6,
+            shares: ["a": 1.0]
+        )
+        XCTAssertTrue(scores.isEmpty)
+    }
 }

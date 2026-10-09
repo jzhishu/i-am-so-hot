@@ -17,6 +17,9 @@ public final class ThermalMonitor {
 
     private let temperatureProvider: TemperatureProvider
     private let cpuSampler = CPUSampler()
+    /// GPU 采样器（v0.5）：每个 tick 都采样——详细 tick 提供 per-process 差分，
+    /// SLEEP tick 提供设备级 GPU busy 总量用于水库回填（视频播放等低 CPU 高 GPU 场景）。
+    private let gpuSampler = GPUSampler()
     private let collector = ProcessCollector()
     private let resolver = AppResolver()
     private var engine: ThermalEngine
@@ -54,6 +57,13 @@ public final class ThermalMonitor {
     /// 逻辑核数（SLEEP 回填时把 0~1 总 CPU 换算为核数口径功率）
     private let coreCount = ProcessInfo.processInfo.processorCount
 
+    /// GPU 功率权重 w_g（技术方案 §8：P_i = w_c·C_i + w_g·G_i，w_c = 1）。
+    /// 物理含义：GPU 全部执行单元满载 1 秒 ≈ w_g 个 CPU 核满载 1 秒的发热。
+    /// 初值 = 0.5 × 核数（经验估计：GPU 满载功耗 ≈ CPU 满载功耗的一半，
+    /// M2 Pro：GPU ~15W vs CPU ~20-25W）。
+    /// 待 Device Calibration 用 IOReport 设备级 CPU/GPU Energy 实测标定。
+    public let gpuWeight: Double
+
     public var currentMode: SamplingMode { modeController.mode }
 
     /// 温升系数 g（°C / 单位热储量）——热模型 v2 §12.1。
@@ -68,8 +78,10 @@ public final class ThermalMonitor {
         tauFast: Double = 15,
         tauSlow: Double = 120,
         initialBaseline: Double = 45,
-        initialGain: Double = 0.016
+        initialGain: Double = 0.016,
+        gpuWeight: Double? = nil
     ) {
+        self.gpuWeight = gpuWeight ?? 0.5 * Double(ProcessInfo.processInfo.processorCount)
         self.temperatureProvider = temperatureProvider
         self.engine = ThermalEngine(tauFast: tauFast, tauSlow: tauSlow)
         self.baseline = BaselineTracker(initial: initialBaseline)
@@ -81,20 +93,23 @@ public final class ThermalMonitor {
     }
 
     /// SLEEP 模式水库回填（纯函数，便于单测）：
-    /// 把全机总功率（totalCPU × 核数）按上次已知的 share 分布拆分。
+    /// 把全机总功率（totalCPU × 核数 + w_g × GPU busy）按上次已知的 share 分布拆分。
     /// share < 1% 的微小 App 不续命（让其自然衰减蒸发，避免长尾被回填永养）。
     /// 过滤后归一化，保证 ΣH 仍朝 P×τ 稳态收敛。
     /// 分布失效（水库为空）时返回空，不产生臆造数据。
     static func sleepRefillScores(
         totalCPU: Double,
         coreCount: Int,
+        totalGPU: Double = 0,
+        gpuWeight: Double = 0,
         shares: [String: Double]
     ) -> [String: Double] {
-        guard totalCPU > 0, coreCount > 0, !shares.isEmpty else { return [:] }
+        guard coreCount > 0, !shares.isEmpty else { return [:] }
+        let totalPower = totalCPU * Double(coreCount) + totalGPU * gpuWeight
+        guard totalPower > 0 else { return [:] }
         let significant = shares.filter { $0.value >= 0.01 }
         guard !significant.isEmpty else { return [:] }
         let sum = significant.values.reduce(0, +)
-        let totalPower = totalCPU * Double(coreCount)
         return significant.mapValues { $0 / sum * totalPower }
     }
 
@@ -114,6 +129,8 @@ public final class ThermalMonitor {
     public func tick(now: Date = Date()) -> MonitorSnapshot {
         // ── 1. 廉价指标 ─────────────────────────────────────────────
         let totalCPU = cpuSampler.totalCPU() ?? 0
+        // GPU 每 tick 采样（~1-2ms）：per-process 差分给详细采集，总量给 SLEEP 回填
+        let gpuDeltas = gpuSampler.gpuTimeDeltas()
         let reading = temperatureProvider.read()
         let temperature = reading.dieCelsius
         let thermalElevated = ProcessInfo.processInfo.thermalState != .nominal
@@ -147,13 +164,16 @@ public final class ThermalMonitor {
         let tickDelta = lastTick.map { now.timeIntervalSince($0) } ?? currentMode.interval
         defer { lastTick = now }
 
+        // GPU busy 率：时间增量 / 实际间隔（1.0 = GPU 满载）
+        let totalGPUBusy = gpuDeltas.values.reduce(0, +) / max(tickDelta, 0.1)
+
         let seedNeeded = !distributionSeeded
         let reseedNeeded = distributionSeeded && currentMode == .sleep && sleepTickCount >= sleepReseedInterval
         let collectDetails = currentMode.collectsProcessDetails || seedNeeded || reseedNeeded
 
         if collectDetails {
             let detailedDelta = lastDetailedTick.map { now.timeIntervalSince($0) } ?? tickDelta
-            let samples = collector.collectSample(now: now).filter { $0.pid != ownPID }
+            let samples = collector.collectSample(now: now, gpuDeltas: gpuDeltas).filter { $0.pid != ownPID }
             // PID reuse：仅失效被复用 PID 的归属缓存（§4.5），避免全量清空
             if !collector.cacheStalePIDs.isEmpty {
                 resolver.invalidateCache(for: collector.cacheStalePIDs)
@@ -166,8 +186,8 @@ public final class ThermalMonitor {
                 resolver.resolve(sample, allSamples: allSamples)
             }
             lastDetailedTick = now
-            // 首帧 CPU 差分全为 0（无历史基准），采到有效分布才算播种完成
-            if lastAppSamples.values.contains(where: { $0.cpu > 0.001 }) {
+            // 首帧 CPU/GPU 差分全为 0（无历史基准），采到有效分布才算播种完成
+            if lastAppSamples.values.contains(where: { $0.cpu > 0.001 || $0.gpu > 0.001 }) {
                 distributionSeeded = true
             }
         }
@@ -176,15 +196,17 @@ public final class ThermalMonitor {
         // ── 5. 热模型：无论是否详细采样，水库都按时间演化 ──────────
         let powerScores: [String: Double]
         if collectDetails {
-            // v0.1 Power Score = CPU（§8：P_i = w_c·C_i，w_c = 1）
-            powerScores = lastAppSamples.mapValues { $0.cpu }
+            // Power Score = w_c·CPU + w_g·GPU（§8，v0.5 接入 GPU）
+            powerScores = lastAppSamples.mapValues { $0.cpu + gpuWeight * $0.gpu }
         } else {
             // SLEEP 回填（热模型 v2 修复）：SLEEP 期间 App 仍在运行，
-            // 水库不能只衰减。用廉价的全机 CPU 总量（无需进程采样）
-            // 按上次已知的 share 分布回填，保持 ΣH ≈ P_total × τ。
+            // 水库不能只衰减。用廉价的全机 CPU 总量 + GPU busy 总量
+            // （无需进程采样）按上次已知的 share 分布回填，保持 ΣH ≈ P_total × τ。
             powerScores = Self.sleepRefillScores(
                 totalCPU: totalCPU,
                 coreCount: coreCount,
+                totalGPU: totalGPUBusy,
+                gpuWeight: gpuWeight,
                 shares: engine.heatShares()
             )
         }
@@ -221,6 +243,7 @@ public final class ThermalMonitor {
                     bundlePath: identity.bundlePath,
                     rootPid: identity.rootPid,
                     cpu: sample.cpu,
+                    gpu: sample.gpu,
                     processCount: sample.processCount,
                     heatShare: shares[sample.appID] ?? 0,
                     estimatedDeltaC: deltaCs[sample.appID] ?? 0,
@@ -233,6 +256,7 @@ public final class ThermalMonitor {
             temperatureCelsius: temperature,
             baselineCelsius: baseline.baseline,
             totalCPU: totalCPU,
+            totalGPU: totalGPUBusy,
             thermalStateElevated: thermalElevated,
             mode: currentMode,
             apps: apps,

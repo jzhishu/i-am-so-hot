@@ -7,6 +7,7 @@ public struct AppHeatInfo: Sendable, Identifiable {
     public let bundlePath: String? // App 层用于查图标
     public let rootPid: pid_t?     // nil（macOS / Other）表示不可 Quit
     public let cpu: Double         // 核数口径，1.0 = 一个核满载
+    public let gpu: Double         // v0.5，1.0 = GPU 全部执行单元满载
     public let processCount: Int
     public let heatShare: Double   // 0~1
     public let estimatedDeltaC: Double
@@ -18,7 +19,7 @@ public struct AppHeatInfo: Sendable, Identifiable {
 
     public init(
         id: String, name: String, bundlePath: String?, rootPid: pid_t?,
-        cpu: Double, processCount: Int, heatShare: Double, estimatedDeltaC: Double,
+        cpu: Double, gpu: Double = 0, processCount: Int, heatShare: Double, estimatedDeltaC: Double,
         isSystemComponent: Bool = false
     ) {
         self.id = id
@@ -26,6 +27,7 @@ public struct AppHeatInfo: Sendable, Identifiable {
         self.bundlePath = bundlePath
         self.rootPid = rootPid
         self.cpu = cpu
+        self.gpu = gpu
         self.processCount = processCount
         self.heatShare = heatShare
         self.estimatedDeltaC = estimatedDeltaC
@@ -39,6 +41,8 @@ public struct MonitorSnapshot: Sendable {
     public let baselineCelsius: Double
     /// 0~1，1 = 全部核满载
     public let totalCPU: Double
+    /// 0~1，1 = GPU 全部执行单元满载（v0.5，来自 AGX client 差分总量）
+    public let totalGPU: Double
     public let thermalStateElevated: Bool
     public let mode: SamplingMode
     /// 按 heatShare 降序
@@ -52,6 +56,7 @@ public struct MonitorSnapshot: Sendable {
         temperatureCelsius: Double?,
         baselineCelsius: Double,
         totalCPU: Double,
+        totalGPU: Double = 0,
         thermalStateElevated: Bool,
         mode: SamplingMode,
         apps: [AppHeatInfo],
@@ -61,6 +66,7 @@ public struct MonitorSnapshot: Sendable {
         self.temperatureCelsius = temperatureCelsius
         self.baselineCelsius = baselineCelsius
         self.totalCPU = totalCPU
+        self.totalGPU = totalGPU
         self.thermalStateElevated = thermalStateElevated
         self.mode = mode
         self.apps = apps
