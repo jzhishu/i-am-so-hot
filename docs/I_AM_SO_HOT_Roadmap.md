@@ -80,7 +80,7 @@ v1.0  Predictive Thermal Monitor
 | v0.1 | ✅ 已完成（2026-09-29） | 本机端到端验证通过 |
 | v0.2 | ✅ 已完成（2026-09-30） | 归属增强 / PID reuse / 压测验证 / 自身能耗达标 |
 | v0.3 | ✅ 已完成（2026-09-30） | 随热模型 v2 重写落地：热水库 / Heat Share / +°C |
-| v0.5 | 🔨 进行中 | 动态 Baseline ✅ / g 在线校准 ✅ / 双时间常数 ✅ / GPU Attribution ✅（2026-10-09）；剩 w_g 标定、历史记录 |
+| v0.5 | 🔨 进行中 | 动态 Baseline ✅ / g 在线校准 ✅ / 双时间常数 ✅ / GPU Attribution ✅ / w_g 在线标定 ✅（2026-10-09）；剩历史记录 |
 | v0.8 | ⬜ 未开始 | |
 | v1.0 | ⬜ 未开始 | 目标：功能完整，本地长期运行验证 |
 
@@ -736,20 +736,10 @@ SLEEP 回填同步支持 GPU busy 总量。
 
 ### Device Calibration
 
-根据：
-
-- Mac 型号。
-- 设备历史行为。
-- 升温速度。
-- 降温速度。
-
-学习：
-
-```text
-thermal gain
-decay constant
-baseline
-```
+✅ 部分落地：thermal gain（g 在线校准，v0.5 提前）与 GPU 权重 w_g
+（2026-10-09，设备级功耗实测推导）已上线并持久化；
+decay constant 已由双时间常数固定参数覆盖（τ_fast/τ_slow）。
+剩余：按 Mac 型号/历史行为的进一步自学习（非阻塞，v1.0 前可再迭代）。
 
 ---
 

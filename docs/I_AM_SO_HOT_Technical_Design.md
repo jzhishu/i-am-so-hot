@@ -424,8 +424,17 @@ w_c = 1
 w_g = 0.5 × 核数   （GPU 满载功耗 ≈ CPU 满载的一半的经验估计）
 ```
 
-w_g 待 Device Calibration 用设备级 CPU/GPU Energy 实测标定；
-g 在线校准会吸收全局缩放误差，但 w_g 不准会导致 GPU 负载时 share 失真。
+w_g 在线标定（2026-10-09 落地）：
+
+- `DevicePowerMeter`：订阅 IOReport Energy Model 的 `CPU Energy`（mJ）/
+  `GPU Energy`（nJ）通道，每 tick 差分得设备级瓦数（运行时 dlopen 隔离私有符号）。
+- `GPUWeightCalibrator`：w_g = (GPU 瓦 ÷ GPU busy) ÷ (CPU 瓦 ÷ CPU 核数)，
+  护栏 GPU busy ≥0.2 / CPU ≥2 核（低负载时空闲底噪主导），EMA α=0.1，
+  瞬时估值钳制 [0.1, 2.0] × 核数；标定值持久化（thermalGPUWeight.v1）。
+- 实测收敛（M2 Pro 10 核）：5.0 → ~9.5，与探针推算 9.4 一致
+  （GPU 满载 ~13.5W / CPU 单核增量 ~1.44W）。
+- 联动效应：GPU 功率进入 ΣH 后，g 在线校准缓慢下移（0.050 → 0.048），
+  属预期的口径自适应。
 
 SLEEP 回填同步升级：总功率 = totalCPU × 核数 + w_g × GPU busy，
 覆盖视频播放等「低 CPU 高 GPU」场景。

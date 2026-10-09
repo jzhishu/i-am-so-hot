@@ -24,6 +24,11 @@ final class MonitorService {
     private var lastSavedGain: Double = 0
     private var lastGainSaveTime: Date = .distantPast
 
+    /// w_g 标定值持久化（v0.5 Device Calibration）
+    private static let gpuWeightDefaultsKey = "thermalGPUWeight.v1"
+    private var lastSavedGPUWeight: Double = 0
+    private var lastGPUWeightSaveTime: Date = .distantPast
+
     private(set) var snapshot: MonitorSnapshot?
 
     /// 每次产生新快照时回调（菜单栏标题 / 面板刷新）
@@ -31,8 +36,13 @@ final class MonitorService {
 
     init() {
         let savedGain = UserDefaults.standard.object(forKey: Self.gainDefaultsKey) as? Double
-        monitor = ThermalMonitor(initialGain: savedGain ?? 0.016)
+        let savedGPUWeight = UserDefaults.standard.object(forKey: Self.gpuWeightDefaultsKey) as? Double
+        monitor = ThermalMonitor(
+            initialGain: savedGain ?? 0.016,
+            initialGPUWeight: savedGPUWeight
+        )
         lastSavedGain = savedGain ?? 0.016
+        lastSavedGPUWeight = savedGPUWeight ?? monitor.gpuWeight
         refreshRegistry()
         observeWorkspaceEvents()
     }
@@ -79,6 +89,7 @@ final class MonitorService {
         debugExport(snapshot)
         #endif
         persistGainIfNeeded()
+        persistGPUWeightIfNeeded()
         log.info(
             "tick: mode=\(snapshot.mode.rawValue, privacy: .public) temp=\(snapshot.temperatureCelsius ?? -1, format: .fixed(precision: 1), privacy: .public)°C cpu=\(snapshot.totalCPU, format: .fixed(precision: 2), privacy: .public) apps=\(snapshot.apps.count, privacy: .public)"
         )
@@ -104,17 +115,21 @@ final class MonitorService {
     private func debugExport(_ snapshot: MonitorSnapshot) {
         let url = URL(fileURLWithPath: "/tmp/iamsohot-debug.csv")
         if !FileManager.default.fileExists(atPath: url.path) {
-            try? "time,mode,temp,total_cpu,total_gpu,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain\n"
+            try? "time,mode,temp,total_cpu,total_gpu,cpu_w,gpu_w,gpu_weight,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain\n"
                 .write(to: url, atomically: true, encoding: .utf8)
         }
         let top = snapshot.apps.first
+        let power = monitor.lastPowerReading
         let line = String(
-            format: "%.0f,%@,%.1f,%.3f,%.3f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f\n",
+            format: "%.0f,%@,%.1f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f\n",
             Date().timeIntervalSince1970,
             snapshot.mode.rawValue,
             snapshot.temperatureCelsius ?? -1,
             snapshot.totalCPU,
             snapshot.totalGPU,
+            power?.cpuWatts ?? -1,
+            power?.gpuWatts ?? -1,
+            monitor.gpuWeight,
             snapshot.baselineCelsius,
             snapshot.apps.count,
             top?.name ?? "-",
@@ -145,6 +160,19 @@ final class MonitorService {
         lastSavedGain = gain
         lastGainSaveTime = now
         log.info("thermal gain calibrated: \(gain, format: .fixed(precision: 4), privacy: .public)")
+    }
+
+    /// w_g 节流持久化：变化超过 0.1 且距上次保存超过 5 分钟才写盘
+    /// （EMA 收敛慢，无需频繁保存）。
+    private func persistGPUWeightIfNeeded() {
+        let weight = monitor.gpuWeight
+        let now = Date()
+        guard abs(weight - lastSavedGPUWeight) > 0.1,
+              now.timeIntervalSince(lastGPUWeightSaveTime) > 300 else { return }
+        UserDefaults.standard.set(weight, forKey: Self.gpuWeightDefaultsKey)
+        lastSavedGPUWeight = weight
+        lastGPUWeightSaveTime = now
+        log.info("gpu weight calibrated: \(weight, format: .fixed(precision: 2), privacy: .public)")
     }
 
     // MARK: - Event Monitor

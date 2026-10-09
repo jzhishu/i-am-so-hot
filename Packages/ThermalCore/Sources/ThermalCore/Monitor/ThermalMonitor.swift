@@ -59,10 +59,16 @@ public final class ThermalMonitor {
 
     /// GPU 功率权重 w_g（技术方案 §8：P_i = w_c·C_i + w_g·G_i，w_c = 1）。
     /// 物理含义：GPU 全部执行单元满载 1 秒 ≈ w_g 个 CPU 核满载 1 秒的发热。
-    /// 初值 = 0.5 × 核数（经验估计：GPU 满载功耗 ≈ CPU 满载功耗的一半，
-    /// M2 Pro：GPU ~15W vs CPU ~20-25W）。
-    /// 待 Device Calibration 用 IOReport 设备级 CPU/GPU Energy 实测标定。
-    public let gpuWeight: Double
+    /// 在线标定（v0.5 Device Calibration）：DevicePowerMeter 设备级功耗实测推导，
+    /// EMA 收敛（GPUWeightCalibrator）；IOReport 不可用时保持初值。
+    /// 初值 = 0.5 × 核数（经验估计）。实测参考（2026-10-09，M2 Pro）：
+    /// 收敛值 ≈ 9.4 ≈ 0.78 × 核数（GPU 满载 ~13.5W / CPU ~1.44W 每核）。
+    public var gpuWeight: Double { gpuWeightCalibrator.weight }
+    private var gpuWeightCalibrator: GPUWeightCalibrator
+    /// 设备级功耗计（IOReport Energy Model），用于 w_g 标定；不可用时为 nil
+    private let powerMeter: DevicePowerMeter?
+    /// 最近一次设备级功耗读数（DEBUG CSV 观测用）
+    public private(set) var lastPowerReading: DevicePowerMeter.PowerReading?
 
     public var currentMode: SamplingMode { modeController.mode }
 
@@ -79,9 +85,11 @@ public final class ThermalMonitor {
         tauSlow: Double = 120,
         initialBaseline: Double = 45,
         initialGain: Double = 0.016,
-        gpuWeight: Double? = nil
+        initialGPUWeight: Double? = nil
     ) {
-        self.gpuWeight = gpuWeight ?? 0.5 * Double(ProcessInfo.processInfo.processorCount)
+        let defaultWeight = 0.5 * Double(ProcessInfo.processInfo.processorCount)
+        self.gpuWeightCalibrator = GPUWeightCalibrator(initial: initialGPUWeight ?? defaultWeight)
+        self.powerMeter = DevicePowerMeter()
         self.temperatureProvider = temperatureProvider
         self.engine = ThermalEngine(tauFast: tauFast, tauSlow: tauSlow)
         self.baseline = BaselineTracker(initial: initialBaseline)
@@ -223,6 +231,20 @@ public final class ThermalMonitor {
             totalCPU: totalCPU,
             interval: tickDelta
         )
+
+        // ── 5.6 w_g 在线标定（v0.5 Device Calibration，§8.2）───────
+        // 设备级功耗 ÷ 负载 → GPU 满载瓦数与单核瓦数之比。
+        // 护栏（GPU busy ≥0.2 / CPU ≥2 核）不满足时保持当前值。
+        if let power = powerMeter?.readPower(now: now) {
+            lastPowerReading = power
+            gpuWeightCalibrator.update(
+                cpuWatts: power.cpuWatts,
+                gpuWatts: power.gpuWatts,
+                cpuCores: totalCPU * Double(coreCount),
+                gpuBusy: totalGPUBusy,
+                coreCount: coreCount
+            )
+        }
 
         let shares = engine.heatShares()
         // 热模型 v2：ΔT_i = g × H_i（§12.1）
