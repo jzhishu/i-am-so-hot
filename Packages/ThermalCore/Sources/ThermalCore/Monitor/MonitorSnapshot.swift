@@ -35,6 +35,27 @@ public struct AppHeatInfo: Sendable, Identifiable {
     }
 }
 
+/// 三窗口温度历史汇总（v0.5，§18）。窗口数据不足时对应字段为 nil。
+public struct TemperatureHistorySummary: Sendable, Equatable {
+    public let fiveMin: TemperatureHistory.Summary?
+    public let oneHour: TemperatureHistory.Summary?
+    public let twentyFourHours: TemperatureHistory.Summary?
+
+    public var isEmpty: Bool {
+        fiveMin == nil && oneHour == nil && twentyFourHours == nil
+    }
+
+    public init(
+        fiveMin: TemperatureHistory.Summary?,
+        oneHour: TemperatureHistory.Summary?,
+        twentyFourHours: TemperatureHistory.Summary?
+    ) {
+        self.fiveMin = fiveMin
+        self.oneHour = oneHour
+        self.twentyFourHours = twentyFourHours
+    }
+}
+
 /// 一次 tick 的完整快照，UI 只消费它（技术方案 §19：UI 不触发重型采样）。
 public struct MonitorSnapshot: Sendable {
     public let temperatureCelsius: Double?
@@ -51,6 +72,8 @@ public struct MonitorSnapshot: Sendable {
     public let appsTotalDeltaC: Double
     /// 模型自检：B + Σ g·H_i（热模型 v2 §12.2），应与实测温度接近
     public let estimatedCelsius: Double?
+    /// 三窗口温度历史（5min / 1h / 24h），冷启动初期各窗口可为 nil
+    public let history: TemperatureHistorySummary?
 
     public init(
         temperatureCelsius: Double?,
@@ -61,7 +84,8 @@ public struct MonitorSnapshot: Sendable {
         mode: SamplingMode,
         apps: [AppHeatInfo],
         appsTotalDeltaC: Double,
-        estimatedCelsius: Double?
+        estimatedCelsius: Double?,
+        history: TemperatureHistorySummary? = nil
     ) {
         self.temperatureCelsius = temperatureCelsius
         self.baselineCelsius = baselineCelsius
@@ -72,5 +96,6 @@ public struct MonitorSnapshot: Sendable {
         self.apps = apps
         self.appsTotalDeltaC = appsTotalDeltaC
         self.estimatedCelsius = estimatedCelsius
+        self.history = history
     }
 }

@@ -80,7 +80,7 @@ v1.0  Predictive Thermal Monitor
 | v0.1 | ✅ 已完成（2026-09-29） | 本机端到端验证通过 |
 | v0.2 | ✅ 已完成（2026-09-30） | 归属增强 / PID reuse / 压测验证 / 自身能耗达标 |
 | v0.3 | ✅ 已完成（2026-09-30） | 随热模型 v2 重写落地：热水库 / Heat Share / +°C |
-| v0.5 | 🔨 进行中 | 动态 Baseline ✅ / g 在线校准 ✅ / 双时间常数 ✅ / GPU Attribution ✅ / w_g 在线标定 ✅（2026-10-09）；剩历史记录 |
+| v0.5 | ✅ 已完成（2026-10-10） | 动态 Baseline / g 在线校准 / 双时间常数 / GPU Attribution / w_g 在线标定 / 历史记录 |
 | v0.8 | ⬜ 未开始 | |
 | v1.0 | ⬜ 未开始 | 目标：功能完整，本地长期运行验证 |
 
@@ -745,21 +745,22 @@ decay constant 已由双时间常数固定参数覆盖（τ_fast/τ_slow）。
 
 ### 历史记录
 
-增加简单历史。
-
-建议：
+✅ 已实现（2026-10-10）：三级降采样（raw 5min / 30s 桶 1h / 5min 桶 24h），
+内存常驻 < 20KB；面板 HISTORY 区纯文本呈现（avg/max，无图表，克制原则）。
 
 ```text
-Last 5 min
-Last 1 hour
-Last 24 hours
+Last 5 min      avg / max
+Last 1 hour     avg / max
+Last 24 hours   avg / max
 ```
-
-但 UI 仍保持克制。
 
 ---
 
 ### 数据持久化
+
+✅ 已实现（2026-10-10）：tier2/tier3 桶 JSON 导出，App 层每 5 分钟批量写
+`~/Library/Application Support/IAmSoHot/temperature-history.json`（atomic write），
+启动时恢复并按当前时间剪枝；失败静默降级（历史非关键路径）。
 
 采用：
 

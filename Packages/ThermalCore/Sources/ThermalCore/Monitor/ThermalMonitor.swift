@@ -74,6 +74,10 @@ public final class ThermalMonitor {
     /// 最近一次设备级功耗读数（DEBUG CSV 观测用）
     public private(set) var lastPowerReading: DevicePowerMeter.PowerReading?
 
+    /// 温度历史（v0.5，§18）：三级降采样，内存常驻。
+    /// 持久化由 App 层低频批量处理（historySnapshot / init 注入）。
+    private var history: TemperatureHistory
+
     public var currentMode: SamplingMode { modeController.mode }
 
     /// 温升系数 g（°C / 单位热储量）——热模型 v2 §12.1。
@@ -89,11 +93,13 @@ public final class ThermalMonitor {
         tauSlow: Double = 120,
         initialBaseline: Double = 45,
         initialGain: Double = 0.016,
-        initialGPUWeight: Double? = nil
+        initialGPUWeight: Double? = nil,
+        restoredHistory: TemperatureHistory.Persisted? = nil
     ) {
         let defaultWeight = 0.5 * Double(ProcessInfo.processInfo.processorCount)
         self.gpuWeightCalibrator = GPUWeightCalibrator(initial: initialGPUWeight ?? defaultWeight)
         self.powerMeter = DevicePowerMeter()
+        self.history = restoredHistory.map { TemperatureHistory(restoring: $0) } ?? TemperatureHistory()
         self.temperatureProvider = temperatureProvider
         self.engine = ThermalEngine(tauFast: tauFast, tauSlow: tauSlow)
         self.baseline = BaselineTracker(initial: initialBaseline)
@@ -103,6 +109,9 @@ public final class ThermalMonitor {
             variance: initialGain == 0.016 ? 1e-4 : 1e-6
         )
     }
+
+    /// 历史持久化快照（App 层低频批量写盘用）
+    public var historySnapshot: TemperatureHistory.Persisted { history.export() }
 
     /// SLEEP 模式水库回填（纯函数，便于单测）：
     /// 把全机总功率（totalCPU × 核数 + w_g × GPU busy）按上次已知的 share 分布拆分。
@@ -146,6 +155,11 @@ public final class ThermalMonitor {
         let reading = temperatureProvider.read()
         let temperature = reading.dieCelsius
         let thermalElevated = ProcessInfo.processInfo.thermalState != .nominal
+
+        // 温度历史（§18）：每 tick 一点，内存成本可忽略
+        if let temperature {
+            history.record(temperature, at: now)
+        }
 
         // ── 2. 采样模式 ─────────────────────────────────────────────
         modeController.update(
@@ -295,7 +309,12 @@ public final class ThermalMonitor {
             mode: currentMode,
             apps: apps,
             appsTotalDeltaC: totalDeltaC,
-            estimatedCelsius: estimatedCelsius
+            estimatedCelsius: estimatedCelsius,
+            history: TemperatureHistorySummary(
+                fiveMin: history.last5Minutes(now: now),
+                oneHour: history.lastHour(now: now),
+                twentyFourHours: history.last24Hours(now: now)
+            )
         )
     }
 }

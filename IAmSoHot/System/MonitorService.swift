@@ -29,6 +29,12 @@ final class MonitorService {
     private var lastSavedGPUWeight: Double = 0
     private var lastGPUWeightSaveTime: Date = .distantPast
 
+    /// 温度历史持久化（v0.5，§18：低频批量写盘，不每秒写库）
+    private static let historyFileName = "temperature-history.json"
+    private var lastHistorySaveTime: Date = .distantPast
+    /// 每 5 分钟一批（与 tier3 桶粒度对齐，一次几 KB）
+    private let historySaveInterval: TimeInterval = 300
+
     private(set) var snapshot: MonitorSnapshot?
 
     /// 每次产生新快照时回调（菜单栏标题 / 面板刷新）
@@ -39,7 +45,8 @@ final class MonitorService {
         let savedGPUWeight = UserDefaults.standard.object(forKey: Self.gpuWeightDefaultsKey) as? Double
         monitor = ThermalMonitor(
             initialGain: savedGain ?? 0.016,
-            initialGPUWeight: savedGPUWeight
+            initialGPUWeight: savedGPUWeight,
+            restoredHistory: Self.loadHistory()
         )
         lastSavedGain = savedGain ?? 0.016
         lastSavedGPUWeight = savedGPUWeight ?? monitor.gpuWeight
@@ -90,6 +97,7 @@ final class MonitorService {
         #endif
         persistGainIfNeeded()
         persistGPUWeightIfNeeded()
+        persistHistoryIfNeeded()
         log.info(
             "tick: mode=\(snapshot.mode.rawValue, privacy: .public) temp=\(snapshot.temperatureCelsius ?? -1, format: .fixed(precision: 1), privacy: .public)°C cpu=\(snapshot.totalCPU, format: .fixed(precision: 2), privacy: .public) apps=\(snapshot.apps.count, privacy: .public)"
         )
@@ -173,6 +181,35 @@ final class MonitorService {
         lastSavedGPUWeight = weight
         lastGPUWeightSaveTime = now
         log.info("gpu weight calibrated: \(weight, format: .fixed(precision: 2), privacy: .public)")
+    }
+
+    // MARK: - 温度历史持久化（v0.5）
+
+    private static var historyFileURL: URL? {
+        guard let dir = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        ).first else { return nil }
+        return dir.appendingPathComponent("IAmSoHot", isDirectory: true)
+            .appendingPathComponent(historyFileName)
+    }
+
+    private static func loadHistory() -> TemperatureHistory.Persisted? {
+        guard let url = historyFileURL,
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(TemperatureHistory.Persisted.self, from: data)
+    }
+
+    /// 每 5 分钟批量写一次（tier3 桶粒度）；失败静默降级（历史非关键路径）
+    private func persistHistoryIfNeeded() {
+        let now = Date()
+        guard now.timeIntervalSince(lastHistorySaveTime) > historySaveInterval,
+              let url = Self.historyFileURL else { return }
+        lastHistorySaveTime = now
+        guard let data = try? JSONEncoder().encode(monitor.historySnapshot) else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
     }
 
     // MARK: - Event Monitor

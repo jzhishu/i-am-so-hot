@@ -29,6 +29,10 @@ struct PopoverView: View {
             sectionTitle("HEATING YOUR MAC")
             appList
             Divider().padding(.vertical, 8)
+            if let history = snapshot.history, !history.isEmpty {
+                historySection(history)
+                Divider().padding(.vertical, 8)
+            }
             bottomEquation
         }
         .padding(12)
@@ -170,6 +174,38 @@ struct PopoverView: View {
         } else {
             Image(systemName: app.id == AppIdentity.macOS.id ? "cpu" : "questionmark.app")
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - 温度历史（v0.5，克制呈现：纯文本 avg/max，无图表）
+
+    @ViewBuilder
+    private func historySection(_ history: TemperatureHistorySummary) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionTitle("TEMPERATURE HISTORY")
+            VStack(alignment: .leading, spacing: 4) {
+                if let s = history.fiveMin {
+                    historyRow("5 min", summary: s)
+                }
+                if let s = history.oneHour {
+                    historyRow("1 hour", summary: s)
+                }
+                if let s = history.twentyFourHours {
+                    historyRow("24 hours", summary: s)
+                }
+            }
+        }
+    }
+
+    private func historyRow(_ label: String, summary: TemperatureHistory.Summary) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(String(format: "avg %.0f° · max %.0f°", summary.avg, summary.max))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
     }
 
