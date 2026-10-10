@@ -50,6 +50,14 @@ public struct ThermalEngine: Sendable {
         return combined
     }
 
+    /// 单个 App 的分层热储量（v0.8 降温预测用：两层衰减速度不同，需分开取）
+    public func reservoirLayers(for appID: String) -> (fast: Double, slow: Double)? {
+        let fast = fastReservoirs[appID] ?? 0
+        let slow = slowReservoirs[appID] ?? 0
+        guard fast > 0 || slow > 0 else { return nil }
+        return (fast, slow)
+    }
+
     /// 注入一次采样：每个 App 的瞬时 Power Score。
     /// - Parameters:
     ///   - powerScores: appID -> P(t)

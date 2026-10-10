@@ -25,6 +25,10 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if let forecast = snapshot.coolingForecast {
+                Divider().padding(.vertical, 8)
+                forecastSection(forecast)
+            }
             Divider().padding(.vertical, 8)
             sectionTitle("HEATING YOUR MAC")
             appList
@@ -115,9 +119,19 @@ struct PopoverView: View {
         return String(format: "%.0f%%", percent)
     }
 
-    /// 行内副标题：CPU + Heat Share（排序依据对用户可见）
+    /// 行内副标题：CPU + Heat Share + What if I quit（排序依据与决策支持对用户可见）
     private func subtitle(_ app: AppHeatInfo) -> String {
-        String(format: "CPU %@ · Heat %.0f%%", cpuText(app.cpu), app.heatShare * 100)
+        var text = String(format: "CPU %@ · Heat %.0f%%", cpuText(app.cpu), app.heatShare * 100)
+        // v0.8：仅可 Quit 的 App 提供 what-if；低置信度时降级为模糊文案（不假精确）
+        if app.canQuit, let expected = app.quitExpectedCelsius, app.estimatedDeltaC >= 0.5 {
+            switch snapshot.predictionConfidence {
+            case .normal:
+                text += String(format: " · quit→~%.0f°", expected)
+            case .low:
+                text += " · quit→cooler"
+            }
+        }
+        return text
     }
 
     private func appRow(_ app: AppHeatInfo) -> some View {
@@ -175,6 +189,36 @@ struct PopoverView: View {
             Image(systemName: app.id == AppIdentity.macOS.id ? "cpu" : "questionmark.app")
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: - 降温预测（v0.8）：Quit 后展示，预测周期结束自动消失
+
+    private func forecastSection(_ forecast: CoolingForecastInfo) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionTitle("COOLING FORECAST")
+            Text("Quit \(forecast.appName)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 2)
+            switch snapshot.predictionConfidence {
+            case .normal:
+                Text(forecast.milestones.map {
+                    String(format: "~%.0f° in %@", $0.celsius, formatDuration($0.seconds))
+                }.joined(separator: " · "))
+                    .font(.callout)
+                    .monospacedDigit()
+            case .low:
+                // Roadmap §7：模型不稳定时宁可模糊，不假精确
+                Text("Expected to cool significantly")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        if seconds < 90 { return String(format: "~%.0fs", seconds) }
+        return String(format: "~%.0fm", seconds / 60)
     }
 
     // MARK: - 温度历史（v0.5，克制呈现：纯文本 avg/max，无图表）

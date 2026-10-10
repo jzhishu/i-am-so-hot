@@ -801,6 +801,23 @@ Last 24 hours   avg / max
 
 > **如果我关掉它，会发生什么？**
 
+✅ 已实现（2026-10-10）：
+
+- **What if I quit this?**：可 Quit 且贡献 ≥0.5°C 的 App，副标题显示
+  `quit→~66°`（稳态预期温度 = 当前温度 − 该 App 的 Estimated +°C）；
+  低置信度降级为 `quit→cooler`（不假精确）。
+- **Cooling Forecast**：Quit 后面板顶部展示预测里程碑
+  （稳态降幅 50% / 80% 两点，如 `~70° in ~25s · ~65° in ~55s`），
+  剩余降幅 < 0.3°C 时预测会话自动结束；低置信度降级为
+  "Expected to cool significantly"。
+- **Prediction Confidence**：由模型自检残差 |实测 − est| 推导
+  （≤ 2.5°C 为 normal），内部维护、驱动 UI 降级。
+- 预测数学：Quit 后双层水库纯衰减
+  `T(t) = T₀ − g·(Hf·(1−e^(−t/τf)) + Hs·(1−e^(−t/τs)))`，
+  二分反演求时间里程碑；纯函数 CoolingPrediction，单测覆盖。
+
+待长期验证（验收标准）：实测降温趋势与预测方向一致、预测值不频繁跳动。
+
 ---
 
 ## 功能

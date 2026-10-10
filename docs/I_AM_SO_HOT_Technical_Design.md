@@ -660,6 +660,24 @@ All apps combined  +8.4°C
 
 ---
 
+### 12.4 降温预测（v0.8，CoolingPrediction）
+
+Quit App i 后功率注入归零，其双层水库纯衰减：
+
+\[
+T_{pred}(t) = T_0 - g\cdot\big(H_{f,i}(1-e^{-t/\tau_f}) + H_{s,i}(1-e^{-t/\tau_s})\big)
+\]
+
+- 稳态降幅 = 该 App 当前 Estimated +°C（g·(Hf+Hs)），与面板数字自洽。
+- 里程碑取稳态降幅 50% / 80% 两点，二分反演单调函数求得时间。
+- 假设其余负载维持现状（短期近似；长期漂移由在线校准吸收）。
+- 置信度 = f(模型自检残差 |T − est|)，≤ 2.5°C 为 normal，
+  否则 UI 降级为模糊文案 / 范围（不假精确，Roadmap §7）。
+- Quit 时捕获会话（先 beginCoolingForecast 再 terminate），
+  剩余降幅 < 0.3°C 自动结束。
+
+---
+
 ## 13. 进阶热模型
 
 未来可拟合设备自身参数：

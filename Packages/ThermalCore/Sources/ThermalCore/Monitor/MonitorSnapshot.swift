@@ -17,10 +17,14 @@ public struct AppHeatInfo: Sendable, Identifiable {
     /// 系统归类（macOS / Other）与系统 UI 组件不提供 Quit（PRD §8.3）
     public var canQuit: Bool { rootPid != nil && !isSystemComponent }
 
+    /// v0.8 What if I quit this?：Quit 后的稳态预期温度（温度未知时为 nil）
+    public let quitExpectedCelsius: Double?
+
     public init(
         id: String, name: String, bundlePath: String?, rootPid: pid_t?,
         cpu: Double, gpu: Double = 0, processCount: Int, heatShare: Double, estimatedDeltaC: Double,
-        isSystemComponent: Bool = false
+        isSystemComponent: Bool = false,
+        quitExpectedCelsius: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -32,6 +36,22 @@ public struct AppHeatInfo: Sendable, Identifiable {
         self.heatShare = heatShare
         self.estimatedDeltaC = estimatedDeltaC
         self.isSystemComponent = isSystemComponent
+        self.quitExpectedCelsius = quitExpectedCelsius
+    }
+}
+
+/// 进行中的降温预测会话快照（v0.8）：Quit 后一段时间内在面板顶部展示
+public struct CoolingForecastInfo: Sendable, Equatable {
+    public let appName: String
+    /// 未来里程碑（相对当前时间的秒数 + 预期温度），已按时间升序
+    public let milestones: [CoolingPrediction.Milestone]
+    /// 稳态预期温度
+    public let steadyCelsius: Double
+
+    public init(appName: String, milestones: [CoolingPrediction.Milestone], steadyCelsius: Double) {
+        self.appName = appName
+        self.milestones = milestones
+        self.steadyCelsius = steadyCelsius
     }
 }
 
@@ -74,6 +94,10 @@ public struct MonitorSnapshot: Sendable {
     public let estimatedCelsius: Double?
     /// 三窗口温度历史（5min / 1h / 24h），冷启动初期各窗口可为 nil
     public let history: TemperatureHistorySummary?
+    /// 进行中的降温预测（Quit 后展示），无会话或预测周期结束为 nil
+    public let coolingForecast: CoolingForecastInfo?
+    /// 预测置信度（v0.8）：low 时 UI 降级为模糊文案，不假精确
+    public let predictionConfidence: CoolingPrediction.Confidence
 
     public init(
         temperatureCelsius: Double?,
@@ -85,7 +109,9 @@ public struct MonitorSnapshot: Sendable {
         apps: [AppHeatInfo],
         appsTotalDeltaC: Double,
         estimatedCelsius: Double?,
-        history: TemperatureHistorySummary? = nil
+        history: TemperatureHistorySummary? = nil,
+        coolingForecast: CoolingForecastInfo? = nil,
+        predictionConfidence: CoolingPrediction.Confidence = .normal
     ) {
         self.temperatureCelsius = temperatureCelsius
         self.baselineCelsius = baselineCelsius
@@ -97,5 +123,7 @@ public struct MonitorSnapshot: Sendable {
         self.appsTotalDeltaC = appsTotalDeltaC
         self.estimatedCelsius = estimatedCelsius
         self.history = history
+        self.coolingForecast = coolingForecast
+        self.predictionConfidence = predictionConfidence
     }
 }

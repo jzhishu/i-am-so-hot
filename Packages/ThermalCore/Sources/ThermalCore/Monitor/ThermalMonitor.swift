@@ -78,6 +78,11 @@ public final class ThermalMonitor {
     /// 持久化由 App 层低频批量处理（historySnapshot / init 注入）。
     private var history: TemperatureHistory
 
+    /// 进行中的降温预测（v0.8）：Quit 时捕获，预测周期结束后自动清除
+    private var activeForecast: CoolingPrediction?
+    /// 最近 tick 的实测温度（Quit 时刻预测起点用）
+    private var lastTemperatureCelsius: Double?
+
     public var currentMode: SamplingMode { modeController.mode }
 
     /// 温升系数 g（°C / 单位热储量）——热模型 v2 §12.1。
@@ -107,6 +112,22 @@ public final class ThermalMonitor {
         self.calibrator = GainCalibrator(
             initial: initialGain,
             variance: initialGain == 0.016 ? 1e-4 : 1e-6
+        )
+    }
+
+    // MARK: - Cooling Forecast（v0.8）
+
+    /// Quit 前调用：捕获该 App 的分层热储量 + 当前 g + 当前温度，
+    /// 建立降温预测会话。水库无热量或温度未知时不建立。
+    public func beginCoolingForecast(appID: String, appName: String, at now: Date = Date()) {
+        guard let layers = engine.reservoirLayers(for: appID),
+              let temp = lastTemperatureCelsius else { return }
+        activeForecast = CoolingPrediction(
+            appName: appName,
+            fastHeat: layers.fast, slowHeat: layers.slow,
+            gain: calibrator.gain,
+            tauFast: engine.tauFast, tauSlow: engine.tauSlow,
+            startCelsius: temp, startTime: now
         )
     }
 
@@ -159,6 +180,7 @@ public final class ThermalMonitor {
         // 温度历史（§18）：每 tick 一点，内存成本可忽略
         if let temperature {
             history.record(temperature, at: now)
+            lastTemperatureCelsius = temperature
         }
 
         // ── 2. 采样模式 ─────────────────────────────────────────────
@@ -285,6 +307,7 @@ public final class ThermalMonitor {
             .filter { (shares[$0.appID] ?? 0) > 0 }
             .map { sample in
                 let identity = appsByID[sample.appID] ?? .other
+                let delta = deltaCs[sample.appID] ?? 0
                 return AppHeatInfo(
                     id: sample.appID,
                     name: identity.localizedName,
@@ -294,11 +317,32 @@ public final class ThermalMonitor {
                     gpu: sample.gpu,
                     processCount: sample.processCount,
                     heatShare: shares[sample.appID] ?? 0,
-                    estimatedDeltaC: deltaCs[sample.appID] ?? 0,
-                    isSystemComponent: identity.isSystemComponent
+                    estimatedDeltaC: delta,
+                    isSystemComponent: identity.isSystemComponent,
+                    // v0.8 What if I quit this?：稳态预期温度 = 当前温度 − 该 App 贡献
+                    quitExpectedCelsius: temperature.map { $0 - delta }
                 )
             }
             .sorted { $0.heatShare > $1.heatShare }
+
+        // ── 7. 降温预测（v0.8）：置信度 + 进行中预测会话的里程碑 ──────
+        let residualGap: Double? = if let temperature, let estimatedCelsius {
+            temperature - estimatedCelsius
+        } else { nil }
+        let confidence = CoolingPrediction.confidence(residualGap: residualGap)
+
+        var forecastInfo: CoolingForecastInfo?
+        if let forecast = activeForecast {
+            if let ms = forecast.milestones(now: now), !ms.isEmpty {
+                forecastInfo = CoolingForecastInfo(
+                    appName: forecast.appName,
+                    milestones: ms,
+                    steadyCelsius: forecast.startCelsius - forecast.steadyDrop
+                )
+            } else {
+                activeForecast = nil   // 剩余降幅 < 0.3°C，预测周期结束
+            }
+        }
 
         return MonitorSnapshot(
             temperatureCelsius: temperature,
@@ -314,7 +358,9 @@ public final class ThermalMonitor {
                 fiveMin: history.last5Minutes(now: now),
                 oneHour: history.lastHour(now: now),
                 twentyFourHours: history.last24Hours(now: now)
-            )
+            ),
+            coolingForecast: forecastInfo,
+            predictionConfidence: confidence
         )
     }
 }
