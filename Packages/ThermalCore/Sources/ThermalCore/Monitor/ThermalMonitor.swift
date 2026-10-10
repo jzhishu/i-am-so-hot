@@ -17,9 +17,13 @@ public final class ThermalMonitor {
 
     private let temperatureProvider: TemperatureProvider
     private let cpuSampler = CPUSampler()
-    /// GPU 采样器（v0.5）：每个 tick 都采样——详细 tick 提供 per-process 差分，
-    /// SLEEP tick 提供设备级 GPU busy 总量用于水库回填（视频播放等低 CPU 高 GPU 场景）。
+    /// GPU 采样器（v0.5）：每个 tick 枚举一次累计值——
+    /// Monitor 自 diff 得设备级 busy 总量（SLEEP 回填 / w_g 标定）；
+    /// 详细 tick 把累计值交给 ProcessCollector 按详细间隔做 per-process 差分
+    /// （与 CPU 差分同节奏，避免 reseed tick 的归一化口径错配）。
     private let gpuSampler = GPUSampler()
+    /// 上一 tick 的累计 GPU 时间（busy 总量差分基准）
+    private var previousTickGPU: [pid_t: UInt64] = [:]
     private let collector = ProcessCollector()
     private let resolver = AppResolver()
     private var engine: ThermalEngine
@@ -137,8 +141,8 @@ public final class ThermalMonitor {
     public func tick(now: Date = Date()) -> MonitorSnapshot {
         // ── 1. 廉价指标 ─────────────────────────────────────────────
         let totalCPU = cpuSampler.totalCPU() ?? 0
-        // GPU 每 tick 采样（~1-2ms）：per-process 差分给详细采集，总量给 SLEEP 回填
-        let gpuDeltas = gpuSampler.gpuTimeDeltas()
+        // GPU 每 tick 枚举（实测 0.47ms）：差分节奏见上方 gpuSampler 注释
+        let gpuCumulative = gpuSampler.cumulativeGPUTimes()
         let reading = temperatureProvider.read()
         let temperature = reading.dieCelsius
         let thermalElevated = ProcessInfo.processInfo.thermalState != .nominal
@@ -172,8 +176,16 @@ public final class ThermalMonitor {
         let tickDelta = lastTick.map { now.timeIntervalSince($0) } ?? currentMode.interval
         defer { lastTick = now }
 
-        // GPU busy 率：时间增量 / 实际间隔（1.0 = GPU 满载）
-        let totalGPUBusy = gpuDeltas.values.reduce(0, +) / max(tickDelta, 0.1)
+        // GPU busy 率：每 tick 增量 / 实际间隔。
+        // 多 command queue 并行时累计值存在并发重复计量（原始值可 >1），
+        // busy 语义封顶 1.0（w_g 标定与 SLEEP 回填都以此为口径）。
+        var tickGPUSeconds = 0.0
+        if let current = gpuCumulative {
+            tickGPUSeconds = GPUSampler.deltas(current: current, previous: previousTickGPU)
+                .values.reduce(0, +)
+            previousTickGPU = current
+        }
+        let totalGPUBusy = min(tickGPUSeconds / max(tickDelta, 0.1), 1.0)
 
         let seedNeeded = !distributionSeeded
         let reseedNeeded = distributionSeeded && currentMode == .sleep && sleepTickCount >= sleepReseedInterval
@@ -181,7 +193,7 @@ public final class ThermalMonitor {
 
         if collectDetails {
             let detailedDelta = lastDetailedTick.map { now.timeIntervalSince($0) } ?? tickDelta
-            let samples = collector.collectSample(now: now, gpuDeltas: gpuDeltas).filter { $0.pid != ownPID }
+            let samples = collector.collectSample(now: now, gpuCumulative: gpuCumulative).filter { $0.pid != ownPID }
             // PID reuse：仅失效被复用 PID 的归属缓存（§4.5），避免全量清空
             if !collector.cacheStalePIDs.isEmpty {
                 resolver.invalidateCache(for: collector.cacheStalePIDs)

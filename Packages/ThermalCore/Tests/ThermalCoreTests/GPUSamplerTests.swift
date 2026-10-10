@@ -42,4 +42,40 @@ final class GPUSamplerTests: XCTestCase {
         XCTAssertEqual(GPUSampler.sumAppUsage([[String: Any]]()), 0)
         XCTAssertEqual(GPUSampler.sumAppUsage([["API": "Metal"]]), 0)  // 缺 accumulatedGPUTime
     }
+
+    // MARK: - deltas（纯函数差分）
+
+    func testDeltas_basicIncrement() {
+        let deltas = GPUSampler.deltas(
+            current: [100: 3_000_000_000],
+            previous: [100: 1_000_000_000]
+        )
+        XCTAssertEqual(deltas[100]!, 2.0, accuracy: 1e-9)
+    }
+
+    func testDeltas_newClientEstablishesBaseline() {
+        // 新出现的 pid：无增量（防止把进程历史累计当成当前窗口增量）
+        let deltas = GPUSampler.deltas(current: [100: 5_000_000_000], previous: [:])
+        XCTAssertNil(deltas[100])
+    }
+
+    func testDeltas_counterRegressionClamped() {
+        // client 重建 / PID reuse：累计值回退 → 钳 0（不产出增量）
+        let deltas = GPUSampler.deltas(
+            current: [100: 1_000_000_000],
+            previous: [100: 9_000_000_000]
+        )
+        XCTAssertNil(deltas[100])
+    }
+
+    func testDeltas_disappearedPidDropped() {
+        // 进程退出：不在 current 中，自然无增量；previous 由调用方整体替换
+        let deltas = GPUSampler.deltas(current: [:], previous: [100: 5_000_000_000])
+        XCTAssertTrue(deltas.isEmpty)
+    }
+
+    func testDeltas_zeroDeltaExcluded() {
+        let deltas = GPUSampler.deltas(current: [100: 5], previous: [100: 5])
+        XCTAssertNil(deltas[100])
+    }
 }

@@ -9,12 +9,18 @@ import IOKit
 /// - `AppUsage`：按 CommandQueue 的 `[{API, lastSubmittedTime, accumulatedGPUTime}]`
 ///
 /// `accumulatedGPUTime` 单位为纳秒（实测 WindowServer 3.12e12 ≈ 52 分钟，
-/// 与常驻合成器身份吻合），对该值按 pid 求和 + 差分即得 per-process GPU 时间，
-/// 与 CPU 时间的差分模式完全同构。
+/// 与常驻合成器身份吻合），对该值按 pid 求和即得 per-process 累计 GPU 时间。
+///
+/// 设计：本类只暴露**累计值**，差分由调用方按自己的节奏做（`deltas` 纯函数）。
+/// 原因（2026-10-09 review 修复）：CPU 差分基准在 ProcessCollector、按详细采样
+/// 间隔维护（SLEEP 下 ~32s），若 GPU 在这里按每 tick（8s）差分，reseed tick 的
+/// GPU 功率会被详细间隔错误归一化（低估 ~4×）。与 CPU 同构后两套节奏各取所需。
 ///
 /// 已知边界（允许不精确，Heat Share 语义不受影响）：
 /// - client 关闭/重建时累计值归零，差分出现负值 → 钳为 0（丢失少量尾部时间）；
 /// - PID reuse：GPU 侧无启动时间可校验，依赖负值钳制兜底；
+/// - 多 command queue 并行时累计值存在并发重复计量（busy 总量可 >1，
+///   由调用方按需 clamp）；share 语义是相对值，不受影响；
 /// - 属性是调试性质的非文档接口，读取失败时整体降级为无 GPU 数据。
 ///
 /// 枚举路径（踩坑记录）：AGXDeviceUserClient 条目是 !registered 状态，
@@ -22,35 +28,35 @@ import IOKit
 /// IOAccelerator（AGXAcceleratorG14X 等设备节点），再在 IOService plane
 /// 下遍历其子节点。多 GPU 设备（外接/dGPU）由外层循环自然覆盖。
 ///
-/// 成本：一次枚举约 1~2ms（~60 个 entry），每 tick 调用一次，
-/// SLEEP 8s 间隔下占空比 ~0.02%，在性能预算内。
+/// 成本：一次枚举实测 0.47ms（~53 个 entry），每 tick 调用一次，
+/// SLEEP 8s 间隔下占空比 ~0.006%，在性能预算内。
 public final class GPUSampler {
 
-    /// 上次采样的每进程累计 GPU 时间（纳秒，多 client 已按 pid 求和）
-    private var previousGPUTimes: [pid_t: UInt64] = [:]
-
-    /// 上一次是否成功枚举到任何 GPU client。
-    /// 用于区分「本机不支持/读取失败」与「当前无 GPU 用户」，
-    /// 失败后上层可整体降级，不再重复尝试。
+    /// 上一次是否成功枚举。用于区分「本机不支持/读取失败」与「当前无 GPU 用户」，
+    /// 失败后上层可整体降级展示。
     public private(set) var isAvailable = true
 
     public init() {}
 
-    /// 采样全部 GPU client，返回 pid -> 距上次采样的 GPU 时间增量（秒）。
-    /// 首次调用建立基准并返回空字典。
-    /// 枚举失败时置 isAvailable = false 并返回空字典。
-    public func gpuTimeDeltas() -> [pid_t: TimeInterval] {
-        guard let current = readCumulativeGPUTimes() else {
+    /// 当前全部 GPU client 的累计 GPU 时间（纳秒），按 pid 求和。
+    /// 返回 nil 表示枚举失败（IORegistry 不可用），并置 isAvailable = false。
+    public func cumulativeGPUTimes() -> [pid_t: UInt64]? {
+        guard let result = enumerate() else {
             isAvailable = false
-            return [:]
+            return nil
         }
-        defer { previousGPUTimes = current }
+        return result
+    }
 
+    /// 累计值差分（纯函数）：pid -> 增量（秒）。
+    /// 新出现的 pid 建立基准（无增量）；累计值回退（client 重建 / PID reuse）钳 0。
+    public static func deltas(
+        current: [pid_t: UInt64],
+        previous: [pid_t: UInt64]
+    ) -> [pid_t: TimeInterval] {
         var deltas: [pid_t: TimeInterval] = [:]
         for (pid, gpuTime) in current {
-            guard let prev = previousGPUTimes[pid] else { continue }  // 新 client：建立基准
-            // client 重建 / PID reuse：累计值回退，差分无意义，钳 0
-            guard gpuTime >= prev else { continue }
+            guard let prev = previous[pid], gpuTime >= prev else { continue }
             let delta = gpuTime - prev
             if delta > 0 {
                 deltas[pid] = Double(delta) / 1_000_000_000
@@ -59,9 +65,9 @@ public final class GPUSampler {
         return deltas
     }
 
-    /// 当前全部 GPU client 的累计 GPU 时间（纳秒），按 pid 求和。
-    /// 返回 nil 表示枚举失败（IORegistry 不可用）。
-    private func readCumulativeGPUTimes() -> [pid_t: UInt64]? {
+    // MARK: - IORegistry 枚举
+
+    private func enumerate() -> [pid_t: UInt64]? {
         var iterator: io_iterator_t = 0
         let kr = IOServiceGetMatchingServices(
             kIOMainPortDefault,

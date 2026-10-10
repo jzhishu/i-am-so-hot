@@ -436,6 +436,20 @@ w_g 在线标定（2026-10-09 落地）：
 - 联动效应：GPU 功率进入 ΣH 后，g 在线校准缓慢下移（0.050 → 0.048），
   属预期的口径自适应。
 
+已知边界与修复（2026-10-09 review）：
+
+- GPU 差分与 CPU 同节奏：GPUSampler 只暴露累计值，per-process 差分在
+  ProcessCollector 按详细采样间隔维护（否则 SLEEP reseed tick 归一化口径
+  错配，GPU 低估 ~4×）；Monitor 自 diff 得每 tick 设备级 busy。
+- 多 command queue 并行时累计值存在并发重复计量，busy 总量可 >1，
+  使用处一律 clamp 到 1.0；share 是相对值不受影响。
+- 异用户进程（WindowServer 等）proc_pidinfo EPERM：不再静默丢弃，
+  生成最小 sample（proc_pidpath 可读），CPU 记 0、GPU 照常，
+  归属走系统规则进 macOS 桶——否则最大 GPU 消费者会凭空蒸发。
+- Swift 踩坑：`String(format:)` 直接传 `optional ?? default` 表达式，
+  nil 时会打印 nan（位模式误判）；需先提取显式 Double 局部变量。
+  （DEBUG CSV 首行 cpu_w/gpu_w 为 nan 即此问题，P3 遗留。）
+
 SLEEP 回填同步升级：总功率 = totalCPU × 核数 + w_g × GPU busy，
 覆盖视频播放等「低 CPU 高 GPU」场景。
 

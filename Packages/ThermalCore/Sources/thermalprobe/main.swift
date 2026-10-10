@@ -57,12 +57,20 @@ for s in top {
 }
 log("Total processes: \(samples.count)")
 
+// 3.5 EPERM 最小 sample 验证（v0.5 review 修复）：WindowServer（_windowserver
+// 用户）proc_pidinfo 无权限，应从「静默丢弃」变为「路径归属 macOS」
+if let ws = samples.first(where: { $0.executablePath?.contains("WindowServer") == true }) {
+    log("WindowServer (pid \(ws.pid)) in samples: name=\(ws.processName) ppid=\(ws.parentPid)")
+} else {
+    log("WindowServer NOT in samples（回归！EPERM 进程被丢弃）")
+}
+
 // 4. Per-process GPU Top 5（v0.5：AGXDeviceUserClient.accumulatedGPUTime 差分）
 log("[4] process GPU ...")
 let gpuSampler = GPUSampler()
-_ = gpuSampler.gpuTimeDeltas()
+let gpuBase = gpuSampler.cumulativeGPUTimes() ?? [:]
 Thread.sleep(forTimeInterval: 1)
-let gpuDeltas = gpuSampler.gpuTimeDeltas()
+let gpuDeltas = GPUSampler.deltas(current: gpuSampler.cumulativeGPUTimes() ?? [:], previous: gpuBase)
 let gpuTop = gpuDeltas.sorted { $0.value > $1.value }.prefix(5)
 if gpuSampler.isAvailable {
     log("Top 5 processes by GPU (last 1s):")
@@ -74,4 +82,28 @@ if gpuSampler.isAvailable {
 } else {
     log("GPU sampling unavailable (enumeration failed)")
 }
+
+// 5. 设备级功耗（v0.5：IOReport Energy Model，用于 w_g 标定）
+log("[5] device power ...")
+if let meter = DevicePowerMeter() {
+    let r1 = meter.readPower()
+    log("  first read: \(r1 == nil ? "nil（建立基准，预期）" : "NON-NIL（异常！\(r1!)）")")
+    Thread.sleep(forTimeInterval: 2)
+    if let r2 = meter.readPower() {
+        log(String(format: "  CPU: %.2f W, GPU: %.2f W", r2.cpuWatts, r2.gpuWatts))
+    } else {
+        log("  second read: nil（异常）")
+    }
+} else {
+    log("  DevicePowerMeter unavailable")
+}
 log("== done ==")
+
+// 6. ThermalMonitor 集成验证（复现 App 首 tick 行为）
+log("[6] ThermalMonitor tick ...")
+let monitor = ThermalMonitor()
+let snap1 = monitor.tick()
+log("  tick1: power=\(String(describing: monitor.lastPowerReading)) gpuWeight=\(String(format: "%.2f", monitor.gpuWeight)) temp=\(snap1.temperatureCelsius ?? -1))")
+Thread.sleep(forTimeInterval: 2)
+_ = monitor.tick()
+log("  tick2: power=\(String(describing: monitor.lastPowerReading))")
