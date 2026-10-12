@@ -32,8 +32,9 @@ import IOKit
 /// SLEEP 8s 间隔下占空比 ~0.006%，在性能预算内。
 public final class GPUSampler {
 
-    /// 上一次是否成功枚举。用于区分「本机不支持/读取失败」与「当前无 GPU 用户」，
-    /// 失败后上层可整体降级展示。
+    /// 粘性降级标志：首次枚举失败后置 false 且不自动恢复（进程级）。
+    /// 用于区分「本机不支持/读取失败」与「当前无 GPU 用户」，
+    /// 失败后上层可整体降级展示。成功调用不会将其重置回 true。
     public private(set) var isAvailable = true
 
     public init() {}

@@ -59,7 +59,9 @@ public final class DevicePowerMeter {
         guard let groupRef = copyInGroup("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue(),
               let groupDict = groupRef as? [String: Any] else { return nil }
 
-        // 只保留目标通道，降低每次采样成本
+        // 只保留目标通道，降低每次采样成本。
+        // 多 cluster 机型（Ultra）可能出现同名通道（每 die 一条），
+        // 要求每个目标名至少出现一次即可，读取时按名累加（review P3 修复）。
         let wanted: Set<String> = ["CPU Energy", "GPU Energy"]
         let channels = (groupDict["IOReportChannels"] as? [Any] ?? []).filter { ch in
             guard let dict = ch as? [String: Any],
@@ -67,7 +69,10 @@ public final class DevicePowerMeter {
                   let name = legend.last as? String else { return false }
             return wanted.contains(name)
         }
-        guard channels.count == wanted.count else { return nil }
+        let foundNames = Set(channels.compactMap { ch in
+            ((ch as? [String: Any])?["LegendChannel"] as? [Any])?.last as? String
+        })
+        guard foundNames.isSuperset(of: wanted) else { return nil }
 
         let filteredRef = ["IOReportChannels": channels] as CFDictionary
         var subbed: Unmanaged<CFMutableArray>?
@@ -100,23 +105,24 @@ public final class DevicePowerMeter {
         let interval = now.timeIntervalSince(prevTime)
         guard interval > 0.1 else { return nil }
 
-        var cpuMillijoules: Double?
-        var gpuNanojoules: Double?
+        var cpuMillijoules = 0.0
+        var gpuNanojoules = 0.0
+        var sawCPU = false, sawGPU = false
         for entry in entries {
             guard let dict = entry as? [String: Any],
                   let legend = dict["LegendChannel"] as? [Any],
                   let name = legend.last as? String else { continue }
             let raw = simpleGetInt(entry as! CFDictionary, 0)
             switch name {
-            case "CPU Energy": cpuMillijoules = Double(raw)          // 单位 mJ
-            case "GPU Energy": gpuNanojoules = Double(raw)           // 单位 nJ
+            case "CPU Energy": cpuMillijoules += Double(raw); sawCPU = true   // 单位 mJ
+            case "GPU Energy": gpuNanojoules += Double(raw); sawGPU = true    // 单位 nJ
             default: break
             }
         }
-        guard let cpuMJ = cpuMillijoules, let gpuNJ = gpuNanojoules else { return nil }
+        guard sawCPU, sawGPU else { return nil }
         return PowerReading(
-            cpuWatts: cpuMJ / 1000 / interval,
-            gpuWatts: gpuNJ / 1_000_000_000 / interval
+            cpuWatts: cpuMillijoules / 1000 / interval,
+            gpuWatts: gpuNanojoules / 1_000_000_000 / interval
         )
     }
 }

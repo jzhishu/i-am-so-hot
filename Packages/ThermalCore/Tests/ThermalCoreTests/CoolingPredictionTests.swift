@@ -91,4 +91,11 @@ final class CoolingPredictionTests: XCTestCase {
         XCTAssertNotNil(ms)
         XCTAssertEqual(ms!.count, 2)
     }
+
+    func testZeroHeatYieldsEmptyMilestonesNotNil() {
+        // gain=0 或全零热量：steadyDrop=0 → 剩余降幅 0 < 0.3 → nil（不建立会话的兜底）
+        let p = makePrediction(fast: 0, slow: 0)
+        XCTAssertEqual(p.steadyDrop, 0)
+        XCTAssertNil(p.milestones(now: p.startTime))
+    }
 }

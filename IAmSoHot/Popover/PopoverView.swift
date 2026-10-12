@@ -220,7 +220,8 @@ struct PopoverView: View {
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
-        if seconds < 90 { return String(format: "~%.0fs", seconds) }
+        // 2 分钟以内一律用秒，避免 89s→~90s 与 90s→~2m 的边界跳变（review P3）
+        if seconds < 120 { return String(format: "~%.0fs", seconds) }
         return String(format: "~%.0fm", seconds / 60)
     }
 

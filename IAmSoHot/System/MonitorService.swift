@@ -123,33 +123,40 @@ final class MonitorService {
     // MARK: - DEBUG 热模型数据导出（TechStack §5.2：校准 τ 用）
 
     #if DEBUG
+    /// CSV 表头（变更时自动重写整个文件，避免新旧格式混在同一文件）
+    private static let debugCSVHeader = "time,mode,temp,total_cpu,total_gpu,cpu_w,gpu_w,gpu_weight,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain"
+
     /// 将每次 tick 的关键指标追加到 /tmp/iamsohot-debug.csv，
     /// 用于对照实测温度曲线校准热模型参数（仅 Debug 构建）。
     private func debugExport(_ snapshot: MonitorSnapshot) {
         let url = URL(fileURLWithPath: "/tmp/iamsohot-debug.csv")
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try? "time,mode,temp,total_cpu,total_gpu,cpu_w,gpu_w,gpu_weight,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain\n"
-                .write(to: url, atomically: true, encoding: .utf8)
-        }
+        ensureDebugCSVHeader(url)
         let top = snapshot.apps.first
         let power = monitor.lastPowerReading
+        // 注意：Optional 值必须先提取为显式 Double 再进 String(format:)，
+        // 直接传 `optional ?? -1` 在 nil 时会被按位模式误读、打印 nan（Swift 坑）。
+        let temp = snapshot.temperatureCelsius ?? -1
+        let cpuWatts = power?.cpuWatts ?? -1
+        let gpuWatts = power?.gpuWatts ?? -1
+        let estTemp = snapshot.estimatedCelsius ?? -1
+        let residBaseline = snapshot.temperatureCelsius.map { $0 - snapshot.appsTotalDeltaC } ?? -1
         let line = String(
             format: "%.0f,%@,%.1f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f\n",
             Date().timeIntervalSince1970,
             snapshot.mode.rawValue,
-            snapshot.temperatureCelsius ?? -1,
+            temp,
             snapshot.totalCPU,
             snapshot.totalGPU,
-            power?.cpuWatts ?? -1,
-            power?.gpuWatts ?? -1,
+            cpuWatts,
+            gpuWatts,
             monitor.gpuWeight,
             snapshot.baselineCelsius,
             snapshot.apps.count,
             top?.name ?? "-",
             top?.heatShare ?? 0,
             snapshot.appsTotalDeltaC,
-            snapshot.estimatedCelsius ?? -1,
-            (snapshot.temperatureCelsius.map { $0 - snapshot.appsTotalDeltaC }) ?? -1,
+            estTemp,
+            residBaseline,
             monitor.thermalGain
         )
         if let handle = try? FileHandle(forWritingTo: url) {
@@ -157,6 +164,22 @@ final class MonitorService {
             handle.write(Data(line.utf8))
             try? handle.close()
         }
+    }
+
+    /// 文件不存在 → 写表头；表头与当前格式不一致 → 归档旧文件后重写（P3 修复）
+    private func ensureDebugCSVHeader(_ url: URL) {
+        let headerLine = Self.debugCSVHeader + "\n"
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            try? headerLine.write(to: url, atomically: true, encoding: .utf8)
+            return
+        }
+        let firstLine = (try? String(contentsOf: url, encoding: .utf8))?
+            .split(separator: "\n", maxSplits: 1).first.map(String.init)
+        guard firstLine != Self.debugCSVHeader else { return }
+        let archive = url.deletingPathExtension().appendingPathExtension("old.csv")
+        try? FileManager.default.removeItem(at: archive)
+        try? FileManager.default.moveItem(at: url, to: archive)
+        try? headerLine.write(to: url, atomically: true, encoding: .utf8)
     }
     #endif
 
