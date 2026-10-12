@@ -78,10 +78,12 @@ public final class ThermalMonitor {
     /// 持久化由 App 层低频批量处理（historySnapshot / init 注入）。
     private var history: TemperatureHistory
 
-    /// 进行中的降温预测（v0.8）：Quit 时捕获，预测周期结束后自动清除
+    /// 进行中的降温预测（v0.8）：Quit 时捕获，预测周期结束后自动清除。
+    /// 同时只跟踪最近一次 Quit（连续 Quit 时新会话覆盖旧会话）。
     private var activeForecast: CoolingPrediction?
-    /// 最近 tick 的实测温度（Quit 时刻预测起点用）
+    /// 最近 tick 的实测温度与采样时间（Quit 时刻预测起点用）
     private var lastTemperatureCelsius: Double?
+    private var lastTemperatureTime: Date?
 
     public var currentMode: SamplingMode { modeController.mode }
 
@@ -117,18 +119,29 @@ public final class ThermalMonitor {
 
     // MARK: - Cooling Forecast（v0.8）
 
-    /// Quit 前调用：捕获该 App 的分层热储量 + 当前 g + 当前温度，
-    /// 建立降温预测会话。水库无热量或温度未知时不建立。
+    /// Quit 成功后调用：捕获该 App 的分层热储量 + 当前 g + 当前温度，
+    /// 建立降温预测会话。
+    ///
+    /// 门槛（与面板 what-if 的 ≥0.5°C 显示阈值对齐，review P1）：
+    /// - 水库无热量或稳态降幅 < 0.5°C：降幅太小，建立会话只会过度承诺
+    /// - 温度未知或过期（超过 2 个采样间隔）：预测起点不可靠
+    ///
+    /// 线程约定：必须与 tick 在同一执行上下文串行调用
+    ///（当前由 @MainActor 的 MonitorService 保证）。
     public func beginCoolingForecast(appID: String, appName: String, at now: Date = Date()) {
         guard let layers = engine.reservoirLayers(for: appID),
-              let temp = lastTemperatureCelsius else { return }
-        activeForecast = CoolingPrediction(
+              let temp = lastTemperatureCelsius,
+              let tempTime = lastTemperatureTime,
+              now.timeIntervalSince(tempTime) <= currentMode.interval * 2 else { return }
+        let prediction = CoolingPrediction(
             appName: appName,
             fastHeat: layers.fast, slowHeat: layers.slow,
             gain: calibrator.gain,
             tauFast: engine.tauFast, tauSlow: engine.tauSlow,
             startCelsius: temp, startTime: now
         )
+        guard prediction.steadyDrop >= 0.5 else { return }
+        activeForecast = prediction
     }
 
     /// 历史持久化快照（App 层低频批量写盘用）
@@ -181,6 +194,7 @@ public final class ThermalMonitor {
         if let temperature {
             history.record(temperature, at: now)
             lastTemperatureCelsius = temperature
+            lastTemperatureTime = now
         }
 
         // ── 2. 采样模式 ─────────────────────────────────────────────
@@ -337,7 +351,8 @@ public final class ThermalMonitor {
                 forecastInfo = CoolingForecastInfo(
                     appName: forecast.appName,
                     milestones: ms,
-                    steadyCelsius: forecast.startCelsius - forecast.steadyDrop
+                    steadyCelsius: forecast.startCelsius - forecast.steadyDrop,
+                    steadyDrop: forecast.steadyDrop
                 )
             } else {
                 activeForecast = nil   // 剩余降幅 < 0.3°C，预测周期结束

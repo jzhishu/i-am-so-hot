@@ -83,4 +83,12 @@ final class CoolingPredictionTests: XCTestCase {
         XCTAssertEqual(CoolingPrediction.confidence(residualGap: 5.0), .low)
         XCTAssertEqual(CoolingPrediction.confidence(residualGap: nil), .low)
     }
+
+    func testClockRollbackDoesNotKillSession() {
+        let p = makePrediction()
+        // now < startTime：瞬时回拨应按起点处理，返回完整里程碑而非 nil
+        let ms = p.milestones(now: p.startTime.addingTimeInterval(-60))
+        XCTAssertNotNil(ms)
+        XCTAssertEqual(ms!.count, 2)
+    }
 }

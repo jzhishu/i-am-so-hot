@@ -78,9 +78,12 @@ final class MonitorService {
 
     func quit(_ app: AppHeatInfo) {
         guard app.canQuit else { return }
-        // v0.8：先捕获热储量建立降温预测，再 terminate（顺序不可换）
-        monitor.beginCoolingForecast(appID: app.id, appName: app.name)
+        // v0.8：先 terminate，成功才建立预测会话——
+        // 避免对「根本没退出的 App」展示虚假降温预测（review P1）
         let ok = registry.terminate(rootPid: app.rootPid)
+        if ok {
+            monitor.beginCoolingForecast(appID: app.id, appName: app.name)
+        }
         log.info("Quit \(app.name, privacy: .public): \(ok ? "requested" : "failed", privacy: .public)")
     }
 

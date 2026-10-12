@@ -208,8 +208,11 @@ struct PopoverView: View {
                     .font(.callout)
                     .monospacedDigit()
             case .low:
-                // Roadmap §7：模型不稳定时宁可模糊，不假精确
-                Text("Expected to cool significantly")
+                // Roadmap §7：模型不稳定时宁可模糊，不假精确；
+                // 文案按降幅分级，小降幅不说 significantly（review P1）
+                Text(forecast.steadyDrop >= 2
+                     ? "Expected to cool significantly"
+                     : "Expected to cool slightly")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

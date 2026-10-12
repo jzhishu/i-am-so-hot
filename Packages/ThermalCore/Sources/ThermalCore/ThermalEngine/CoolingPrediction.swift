@@ -83,9 +83,10 @@ public struct CoolingPrediction: Sendable, Equatable {
     /// 面向 UI 的未来里程碑（相对 now）：
     /// 取稳态降幅 50% / 80% 两个点；已过去的里程碑自动剔除。
     /// 剩余降幅 < 0.3°C 视为预测周期结束（返回 nil）。
+    /// 时钟回拨（now < startTime）按 elapsed=0 处理，不误杀会话（review P2）。
     public func milestones(now: Date) -> [Milestone]? {
-        let elapsed = now.timeIntervalSince(startTime)
-        guard elapsed >= 0, steadyDrop - drop(after: elapsed) >= 0.3 else { return nil }
+        let elapsed = max(0, now.timeIntervalSince(startTime))
+        guard steadyDrop - drop(after: elapsed) >= 0.3 else { return nil }
         return [0.5, 0.8].compactMap { fraction in
             guard let t = time(toFraction: fraction), t > elapsed + 1 else { return nil }
             return Milestone(seconds: t - elapsed, celsius: expectedCelsius(after: t))

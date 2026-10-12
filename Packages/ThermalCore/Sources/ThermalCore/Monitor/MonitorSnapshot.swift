@@ -47,11 +47,14 @@ public struct CoolingForecastInfo: Sendable, Equatable {
     public let milestones: [CoolingPrediction.Milestone]
     /// 稳态预期温度
     public let steadyCelsius: Double
+    /// 稳态总降幅（低置信度文案分级用）
+    public let steadyDrop: Double
 
-    public init(appName: String, milestones: [CoolingPrediction.Milestone], steadyCelsius: Double) {
+    public init(appName: String, milestones: [CoolingPrediction.Milestone], steadyCelsius: Double, steadyDrop: Double) {
         self.appName = appName
         self.milestones = milestones
         self.steadyCelsius = steadyCelsius
+        self.steadyDrop = steadyDrop
     }
 }
 
