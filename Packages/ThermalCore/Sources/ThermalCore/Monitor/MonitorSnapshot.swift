@@ -101,6 +101,8 @@ public struct MonitorSnapshot: Sendable {
     public let coolingForecast: CoolingForecastInfo?
     /// 预测置信度（v0.8）：low 时 UI 降级为模糊文案，不假精确
     public let predictionConfidence: CoolingPrediction.Confidence
+    /// 摄像头正在采集（System Hardware 副标题标注用，仅缺口发生时采样）
+    public let cameraActive: Bool
 
     public init(
         temperatureCelsius: Double?,
@@ -114,7 +116,8 @@ public struct MonitorSnapshot: Sendable {
         estimatedCelsius: Double?,
         history: TemperatureHistorySummary? = nil,
         coolingForecast: CoolingForecastInfo? = nil,
-        predictionConfidence: CoolingPrediction.Confidence = .normal
+        predictionConfidence: CoolingPrediction.Confidence = .normal,
+        cameraActive: Bool = false
     ) {
         self.temperatureCelsius = temperatureCelsius
         self.baselineCelsius = baselineCelsius
@@ -128,5 +131,6 @@ public struct MonitorSnapshot: Sendable {
         self.history = history
         self.coolingForecast = coolingForecast
         self.predictionConfidence = predictionConfidence
+        self.cameraActive = cameraActive
     }
 }

@@ -124,7 +124,7 @@ final class MonitorService {
 
     #if DEBUG
     /// CSV 表头（变更时自动重写整个文件，避免新旧格式混在同一文件）
-    private static let debugCSVHeader = "time,mode,temp,total_cpu,total_gpu,cpu_w,gpu_w,gpu_weight,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain,hw_gap"
+    private static let debugCSVHeader = "time,mode,temp,total_cpu,total_gpu,cpu_w,gpu_w,gpu_weight,baseline,app_count,top_app,top_share,apps_sum_delta,est_temp,resid_baseline,gain,hw_gap,cam"
 
     /// 将每次 tick 的关键指标追加到 /tmp/iamsohot-debug.csv，
     /// 用于对照实测温度曲线校准热模型参数（仅 Debug 构建）。
@@ -141,7 +141,7 @@ final class MonitorService {
         let estTemp = snapshot.estimatedCelsius ?? -1
         let residBaseline = snapshot.temperatureCelsius.map { $0 - snapshot.appsTotalDeltaC } ?? -1
         let line = String(
-            format: "%.0f,%@,%.1f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f,%.2f\n",
+            format: "%.0f,%@,%.1f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%d,%@,%.3f,%.2f,%.1f,%.1f,%.4f,%.2f,%d\n",
             Date().timeIntervalSince1970,
             snapshot.mode.rawValue,
             temp,
@@ -158,7 +158,8 @@ final class MonitorService {
             estTemp,
             residBaseline,
             monitor.thermalGain,
-            monitor.lastHardwareGapCores
+            monitor.lastHardwareGapCores,
+            monitor.lastCameraActive ? 1 : 0
         )
         if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()

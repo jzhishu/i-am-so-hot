@@ -86,8 +86,12 @@ public final class ThermalMonitor {
     private var lastTemperatureTime: Date?
     /// 麦克风采集枚举（能耗对账归因增强：语音/视频通话 App 识别）
     private var audioSampler = AudioInputSampler()
+    /// 摄像头状态检测（缺口归因的上下文标注）
+    private let cameraSampler = CameraStateSampler()
     /// 最近一次 tick 的硬件缺口（核数当量，DEBUG CSV 观测用）
     public private(set) var lastHardwareGapCores: Double = 0
+    /// 最近一次缺口 tick 的摄像头采集状态（DEBUG CSV 观测用）
+    public private(set) var lastCameraActive = false
 
     public var currentMode: SamplingMode { modeController.mode }
 
@@ -357,6 +361,9 @@ public final class ThermalMonitor {
                         lastAppSamples[micAppID] = AppSample(appID: micAppID, processes: [], cpu: 0, gpu: 0)
                     }
                 } else {
+                    // 无麦克风候选：摄像头开着时标注上下文（客户端走 CMIO
+                    // 扩展不可见，只能标注「摄像头在烧电」，不能点名）
+                    lastCameraActive = cameraSampler.isFrontCameraStreaming()
                     scores[AppIdentity.systemHardware.id, default: 0] += gap
                 }
             }
@@ -460,7 +467,8 @@ public final class ThermalMonitor {
                 twentyFourHours: history.last24Hours(now: now)
             ),
             coolingForecast: forecastInfo,
-            predictionConfidence: confidence
+            predictionConfidence: confidence,
+            cameraActive: lastCameraActive
         )
     }
 }
