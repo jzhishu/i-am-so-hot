@@ -44,4 +44,11 @@ extension AppIdentity {
     public static let other = AppIdentity(
         id: "system.other", localizedName: "Other", isSystemComponent: true
     )
+
+    /// 能耗对账缺口（v0.8+）：实测 CPU 封装功耗超出全部进程归因的部分，
+    /// 即硬件加速器（摄像头 ISP / 视频编解码 / ANE）与内核驱动的热量。
+    /// 不属于任何进程，不提供 Quit。
+    public static let systemHardware = AppIdentity(
+        id: "system.hardware", localizedName: "System Hardware", isSystemComponent: true
+    )
 }

@@ -147,6 +147,20 @@ public final class ThermalMonitor {
     /// 历史持久化快照（App 层低频批量写盘用）
     public var historySnapshot: TemperatureHistory.Persisted { history.export() }
 
+    /// 能耗对账（纯函数，便于单测）：实测 CPU 封装瓦数超出进程归因的部分，
+    /// 折算为核数当量注入 System Hardware 桶。
+    /// < 1W 视为测量噪声（防抖），不注入。
+    static func hardwareGapCores(
+        cpuWatts: Double,
+        attributedCores: Double,
+        wattsPerCore: Double
+    ) -> Double {
+        guard wattsPerCore > 0 else { return 0 }
+        let gap = cpuWatts - GPUWeightCalibrator.idleWattsFloor - attributedCores * wattsPerCore
+        guard gap > 1.0 else { return 0 }
+        return gap / wattsPerCore
+    }
+
     /// SLEEP 模式水库回填（纯函数，便于单测）：
     /// 把全机总功率（totalCPU × 核数 + w_g × GPU busy）按上次已知的 share 分布拆分。
     /// share < 1% 的微小 App 不续命（让其自然衰减蒸发，避免长尾被回填永养）。
@@ -176,6 +190,7 @@ public final class ThermalMonitor {
         )
         appsByID[AppIdentity.macOS.id] = .macOS
         appsByID[AppIdentity.other.id] = .other
+        appsByID[AppIdentity.systemHardware.id] = .systemHardware
         resolver.updateRegistry(apps)
         resolver.invalidateCache()
     }
@@ -237,6 +252,10 @@ public final class ThermalMonitor {
         }
         let totalGPUBusy = min(tickGPUSeconds / max(tickDelta, 0.1), 1.0)
 
+        // 设备级功耗每 tick 读一次（0.1ms 级）：w_g 标定 + 能耗对账共用
+        let power = powerMeter?.readPower(now: now)
+        if let power { lastPowerReading = power }
+
         let seedNeeded = !distributionSeeded
         let reseedNeeded = distributionSeeded && currentMode == .sleep && sleepTickCount >= sleepReseedInterval
         let collectDetails = currentMode.collectsProcessDetails || seedNeeded || reseedNeeded
@@ -280,7 +299,25 @@ public final class ThermalMonitor {
                 shares: engine.heatShares()
             )
         }
-        engine.ingest(powerScores: powerScores, deltaTime: max(tickDelta, 0.1))
+        // 能耗对账（整活核心：每一度热都得有名字）。
+        // 实测 CPU 封装瓦数超出进程归因的部分 = 硬件加速器
+        // （摄像头 ISP / 视频编解码 / ANE）与内核驱动的热量，
+        // 注入 System Hardware 伪 App 参与归因，而不是静默推高残差。
+        var scores = powerScores
+        if let power {
+            let gap = Self.hardwareGapCores(
+                cpuWatts: power.cpuWatts,
+                attributedCores: totalCPU * Double(coreCount),
+                wattsPerCore: gpuWeightCalibrator.wattsPerCore
+            )
+            if gap > 0 { scores[AppIdentity.systemHardware.id, default: 0] += gap }
+        }
+        // 让缺口桶出现在热榜：有注入或有残存热量时生成合成 sample
+        let hwID = AppIdentity.systemHardware.id
+        if scores[hwID] != nil || (engine.reservoirs[hwID] ?? 0) > 1e-3 {
+            lastAppSamples[hwID] = AppSample(appID: hwID, processes: [], cpu: 0, gpu: 0)
+        }
+        engine.ingest(powerScores: scores, deltaTime: max(tickDelta, 0.1))
 
         // ── 5.5 g 在线校准（热模型 v2 第三步，§14）───────────────
         // 实测温度为 ground truth：(T − 模型baseline) ≈ g × ΣH。
@@ -297,8 +334,7 @@ public final class ThermalMonitor {
         // ── 5.6 w_g 在线标定（v0.5 Device Calibration，§8.2）───────
         // 设备级功耗 ÷ 负载 → GPU 满载瓦数与单核瓦数之比。
         // 护栏（GPU busy ≥0.2 / CPU ≥2 核）不满足时保持当前值。
-        if let power = powerMeter?.readPower(now: now) {
-            lastPowerReading = power
+        if let power {
             gpuWeightCalibrator.update(
                 cpuWatts: power.cpuWatts,
                 gpuWatts: power.gpuWatts,

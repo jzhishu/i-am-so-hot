@@ -429,12 +429,36 @@ w_g 在线标定（2026-10-09 落地）：
 - `DevicePowerMeter`：订阅 IOReport Energy Model 的 `CPU Energy`（mJ）/
   `GPU Energy`（nJ）通道，每 tick 差分得设备级瓦数（运行时 dlopen 隔离私有符号）。
 - `GPUWeightCalibrator`：w_g = (GPU 瓦 ÷ GPU busy) ÷ (CPU 瓦 ÷ CPU 核数)，
-  护栏 GPU busy ≥0.2 / CPU ≥2 核（低负载时空闲底噪主导），EMA α=0.1，
+  护栏 GPU busy ≥0.5 / CPU ≥2 核（低负载时 GPU 功耗被显示引擎固定开销
+  主导，不与 busy 成比例——实测日常野样本把 w_g 漂到 1.4 vs 压测真值
+  ~9.4，2026-10-13 护栏从 0.2 上调至 0.5），EMA α=0.1，
   瞬时估值钳制 [0.1, 2.0] × 核数；标定值持久化（thermalGPUWeight.v1）。
+  同器在线标定 wattsPerCore（扣 0.5W 空闲底噪，EMA，钳 [0.3, 4.0]W）。
 - 实测收敛（M2 Pro 10 核）：5.0 → ~9.5，与探针推算 9.4 一致
   （GPU 满载 ~13.5W / CPU 单核增量 ~1.44W）。
 - 联动效应：GPU 功率进入 ΣH 后，g 在线校准缓慢下移（0.050 → 0.048），
   属预期的口径自适应。
+
+### 8.3 能耗对账（System Hardware 缺口，2026-10-13）
+
+产品定位是「谁让我的 Mac 热了」——每一度热都得有名字。
+实测发现：摄像头 ISP / 视频编解码（media engine）/ ANE 等硬件加速器
+干活时几乎不占进程 CPU 时间（ChatGPT 视频场景：CPU 封装实测 8-21W，
+进程归因仅 0.1-0.6 核 ≈1W），per-process 归因完全看不见它们，
+热量静默推高残差，造成「温度涨了 10°C 但 App 贡献没变」的困惑。
+
+每 tick 对账：
+
+```
+缺口瓦数 = CPU 封装实测 − 空闲底噪(0.5W) − Σ进程CPU × wattsPerCore
+缺口 > 1W（防抖阈值）→ 折算为核数当量注入 System Hardware 伪 App
+```
+
+- System Hardware 是普通热榜条目（⚡ 图标），水库 / Share / +°C 走同一管线；
+  isSystemComponent → 不提供 Quit。
+- wattsPerCore 由 GPUWeightCalibrator 在线标定（不依赖 GPU 护栏）。
+- UI 副标题直接说明来源："Camera / media / chip hardware"。
+- 功耗计不可用的机型（非 AGX）自动跳过，退回原行为。
 
 已知边界与修复（2026-10-09 review）：
 

@@ -98,4 +98,32 @@ final class CoolingPredictionTests: XCTestCase {
         XCTAssertEqual(p.steadyDrop, 0)
         XCTAssertNil(p.milestones(now: p.startTime))
     }
+
+    // MARK: - 能耗对账（System Hardware 缺口）
+
+    func testHardwareGapBasic() {
+        // 实测 16W，进程归因 0.5 核 × 1.5W = 0.75W，底噪 0.5W
+        // → 缺口 14.75W ≈ 9.83 核当量（摄像头/media engine 场景）
+        let gap = ThermalMonitor.hardwareGapCores(
+            cpuWatts: 16, attributedCores: 0.5, wattsPerCore: 1.5
+        )
+        XCTAssertEqual(gap, (16 - 0.5 - 0.75) / 1.5, accuracy: 1e-9)
+    }
+
+    func testHardwareGapNoiseThreshold() {
+        // 缺口 < 1W 视为噪声，不注入
+        XCTAssertEqual(ThermalMonitor.hardwareGapCores(
+            cpuWatts: 1.2, attributedCores: 0.4, wattsPerCore: 1.5
+        ), 0)
+        // 正常满载：实测与归因一致时无缺口
+        XCTAssertEqual(ThermalMonitor.hardwareGapCores(
+            cpuWatts: 0.5 + 8 * 1.5, attributedCores: 8, wattsPerCore: 1.5
+        ), 0)
+    }
+
+    func testHardwareGapZeroWattsPerCoreSafe() {
+        XCTAssertEqual(ThermalMonitor.hardwareGapCores(
+            cpuWatts: 20, attributedCores: 1, wattsPerCore: 0
+        ), 0)
+    }
 }

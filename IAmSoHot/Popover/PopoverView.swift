@@ -121,6 +121,11 @@ struct PopoverView: View {
 
     /// 行内副标题：CPU + Heat Share + What if I quit（排序依据与决策支持对用户可见）
     private func subtitle(_ app: AppHeatInfo) -> String {
+        // System Hardware：能耗对账缺口（摄像头/编解码/驱动），
+        // 不占 CPU 是其本质特征，文案直接说明来源
+        if app.id == AppIdentity.systemHardware.id {
+            return "Camera / media / chip hardware"
+        }
         var text = String(format: "CPU %@ · Heat %.0f%%", cpuText(app.cpu), app.heatShare * 100)
         // v0.8：仅可 Quit 的 App 提供 what-if；低置信度时降级为模糊文案（不假精确）
         if app.canQuit, let expected = app.quitExpectedCelsius, app.estimatedDeltaC >= 0.5 {
@@ -186,8 +191,16 @@ struct PopoverView: View {
             Image(nsImage: image)
                 .resizable()
         } else {
-            Image(systemName: app.id == AppIdentity.macOS.id ? "cpu" : "questionmark.app")
+            Image(systemName: systemIconName(for: app))
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func systemIconName(for app: AppHeatInfo) -> String {
+        switch app.id {
+        case AppIdentity.macOS.id: return "cpu"
+        case AppIdentity.systemHardware.id: return "bolt.fill"
+        default: return "questionmark.app"
         }
     }
 
