@@ -84,6 +84,10 @@ public final class ThermalMonitor {
     /// 最近 tick 的实测温度与采样时间（Quit 时刻预测起点用）
     private var lastTemperatureCelsius: Double?
     private var lastTemperatureTime: Date?
+    /// 麦克风采集枚举（能耗对账归因增强：语音/视频通话 App 识别）
+    private var audioSampler = AudioInputSampler()
+    /// 最近一次 tick 的硬件缺口（核数当量，DEBUG CSV 观测用）
+    public private(set) var lastHardwareGapCores: Double = 0
 
     public var currentMode: SamplingMode { modeController.mode }
 
@@ -146,6 +150,37 @@ public final class ThermalMonitor {
 
     /// 历史持久化快照（App 层低频批量写盘用）
     public var historySnapshot: TemperatureHistory.Persisted { history.export() }
+
+    /// 麦克风采集中的可归因 App（bundleID 口径）。
+    /// 只归因到已注册身份的普通 App（保证热榜显示名正常），
+    /// 系统/守护进程采集（Siri 等）与未注册身份返回 nil，缺口落 System Hardware。
+    private func micActiveAppID() -> String? {
+        guard audioSampler.isAvailable else { return nil }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        for pid in audioSampler.activeInputPIDs() {
+            guard pid != ownPID else { continue }   // 自己不背锅
+            let ownership = resolver.resolve(Self.minimalSample(for: pid), allSamples: [:])
+            let appID = ownership.appID
+            guard appID != AppIdentity.macOS.id, appID != AppIdentity.other.id,
+                  appsByID[appID] != nil else { continue }
+            return appID
+        }
+        return nil
+    }
+
+    /// 仅有 pid 时的最小样本（proc_pidpath 对异用户进程也可读）
+    private static func minimalSample(for pid: pid_t) -> ProcessSample {
+        var buf = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let len = proc_pidpath(pid, &buf, UInt32(MAXPATHLEN))
+        let path = len > 0
+            ? String(decoding: buf.prefix(Int(len)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            : nil
+        return ProcessSample(
+            pid: pid, parentPid: 0, executablePath: path,
+            processName: path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "pid\(pid)",
+            cpuTimeDelta: 0
+        )
+    }
 
     /// 能耗对账（纯函数，便于单测）：实测 CPU 封装瓦数超出进程归因的部分，
     /// 折算为核数当量注入 System Hardware 桶。
@@ -304,13 +339,27 @@ public final class ThermalMonitor {
         // （摄像头 ISP / 视频编解码 / ANE）与内核驱动的热量，
         // 注入 System Hardware 伪 App 参与归因，而不是静默推高残差。
         var scores = powerScores
+        lastHardwareGapCores = 0
         if let power {
             let gap = Self.hardwareGapCores(
                 cpuWatts: power.cpuWatts,
                 attributedCores: totalCPU * Double(coreCount),
                 wattsPerCore: gpuWeightCalibrator.wattsPerCore
             )
-            if gap > 0 { scores[AppIdentity.systemHardware.id, default: 0] += gap }
+            if gap > 0 {
+                lastHardwareGapCores = gap
+                // 归因优先级：正在采集麦克风的 App（语音/视频通话场景，
+                // 摄像头 ISP / 编解码 / 音频 DSP 的热量算它的）→ 否则 System Hardware
+                if let micAppID = micActiveAppID() {
+                    scores[micAppID, default: 0] += gap
+                    // SLEEP 间隙该 App 可能无进程样本，补合成样本保证热榜可见
+                    if lastAppSamples[micAppID] == nil {
+                        lastAppSamples[micAppID] = AppSample(appID: micAppID, processes: [], cpu: 0, gpu: 0)
+                    }
+                } else {
+                    scores[AppIdentity.systemHardware.id, default: 0] += gap
+                }
+            }
         }
         // 让缺口桶出现在热榜：有注入或有残存热量时生成合成 sample
         let hwID = AppIdentity.systemHardware.id
