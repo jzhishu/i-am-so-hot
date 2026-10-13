@@ -56,7 +56,19 @@ struct PopoverView: View {
         if snapshot.thermalStateElevated && delta > 15 { return "I'm on Fire" }
         if delta > 15 { return "I AM SO HOT" }
         if delta > 5 { return "Getting Warm" }
+        // 负载没了但机身还是热的（余热 > 4°C）：说清楚是在散热，
+        // 否则 "I'm Cool" 配高温数字反直觉
+        if residualHeatCelsius > 4 { return "Cooling Down" }
         return "I'm Cool"
+    }
+
+    /// 机身余热（°C）：baseline 高出 24h 环境底的部分。
+    /// 之前负载把机身烤热了，散热时间常数几十分钟——
+    /// 这部分热不是当前 App 的锅，但必须说出来（账平叙事）。
+    /// 数据不足（冷启动）时为 0，不展示。
+    private var residualHeatCelsius: Double {
+        guard let floor = snapshot.history?.twentyFourHours?.min else { return 0 }
+        return max(0, snapshot.baselineCelsius - floor)
     }
 
     private var header: some View {
@@ -284,6 +296,17 @@ struct PopoverView: View {
                 Text(String(format: "+%.1f°C", snapshot.appsTotalDeltaC))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+            }
+            // 余热分解：baseline 高出 24h 环境底的部分 = 之前负载还没散完的机身热
+            if residualHeatCelsius > 3 {
+                HStack {
+                    Text("Earlier heat, still dissipating")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(String(format: "+%.1f°C", residualHeatCelsius))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             Text("Estimated values, not sensor measurements")
                 .font(.caption2)
