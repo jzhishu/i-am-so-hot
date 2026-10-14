@@ -62,6 +62,27 @@ final class TemperatureHistoryTests: XCTestCase {
         XCTAssertEqual(s!.avg, 42, accuracy: 1e-9)
     }
 
+    func testHourBucketsReturnsOrderedSeries() {
+        var h = TemperatureHistory()
+        record(&h, seconds: 120, interval: 5, value: { _ in 42 })
+        let now = t0.addingTimeInterval(120)
+        h.record(43, at: now)
+        let buckets = h.hourBuckets(now: now)
+        XCTAssertGreaterThanOrEqual(buckets.count, 2)
+        // 时间升序
+        for (a, b) in zip(buckets, buckets.dropFirst()) {
+            XCTAssertLessThan(a.start, b.start)
+        }
+    }
+
+    func testHourBucketsPruneBeyondOneHour() {
+        var h = TemperatureHistory()
+        record(&h, seconds: 120, interval: 5, value: { _ in 42 })
+        // 两小时后查询：1h 窗口外，应为空
+        let later = t0.addingTimeInterval(7200)
+        XCTAssertTrue(h.hourBuckets(now: later).isEmpty)
+    }
+
     func testTier2WeightedAverage() {
         var h = TemperatureHistory()
         // 第一个 30s 桶 40°C，第二个 30s 桶 50°C

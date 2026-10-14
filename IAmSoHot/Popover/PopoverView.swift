@@ -33,7 +33,7 @@ struct PopoverView: View {
             sectionTitle("HEATING YOUR MAC")
             appList
             Divider().padding(.vertical, 8)
-            if let history = snapshot.history, !history.isEmpty {
+            if let history = snapshot.history, history.hourBuckets.count >= 2 {
                 historySection(history)
                 Divider().padding(.vertical, 8)
             }
@@ -131,7 +131,8 @@ struct PopoverView: View {
         return String(format: "%.0f%%", percent)
     }
 
-    /// 行内副标题：CPU + Heat Share + What if I quit（排序依据与决策支持对用户可见）
+    /// 行内副标题：CPU + Heat Share（+°C 列已承担 Quit 决策支持，
+    /// quit→~X° 与当前温度只差一个已展示的增量，信息量冗余，已移除）
     private func subtitle(_ app: AppHeatInfo) -> String {
         // System Hardware：能耗对账缺口（摄像头/编解码/驱动），
         // 不占 CPU 是其本质特征，文案直接说明来源；
@@ -141,17 +142,7 @@ struct PopoverView: View {
                 ? "Camera is active — ISP / media power"
                 : "Camera / media / chip hardware"
         }
-        var text = String(format: "CPU %@ · Heat %.0f%%", cpuText(app.cpu), app.heatShare * 100)
-        // v0.8：仅可 Quit 的 App 提供 what-if；低置信度时降级为模糊文案（不假精确）
-        if app.canQuit, let expected = app.quitExpectedCelsius, app.estimatedDeltaC >= 0.5 {
-            switch snapshot.predictionConfidence {
-            case .normal:
-                text += String(format: " · quit→~%.0f°", expected)
-            case .low:
-                text += " · quit→cooler"
-            }
-        }
-        return text
+        return String(format: "CPU %@ · Heat %.0f%%", cpuText(app.cpu), app.heatShare * 100)
     }
 
     private func appRow(_ app: AppHeatInfo) -> some View {
@@ -253,35 +244,25 @@ struct PopoverView: View {
         return String(format: "~%.0fm", seconds / 60)
     }
 
-    // MARK: - 温度历史（v0.5，克制呈现：纯文本 avg/max，无图表）
+    // MARK: - 温度曲线（1h 走势，静态折线：无动画、单色细线，克制原则）
 
     @ViewBuilder
     private func historySection(_ history: TemperatureHistorySummary) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("TEMPERATURE HISTORY")
-            VStack(alignment: .leading, spacing: 4) {
-                if let s = history.fiveMin {
-                    historyRow("5 min", summary: s)
-                }
-                if let s = history.oneHour {
-                    historyRow("1 hour", summary: s)
-                }
-                if let s = history.twentyFourHours {
-                    historyRow("24 hours", summary: s)
-                }
+            sectionTitle("TEMPERATURE · 1H")
+            TemperatureCurveView(
+                buckets: history.hourBuckets,
+                current: snapshot.temperatureCelsius,
+                now: Date()
+            )
+            // 24h 极值一行带过（长期上下文），5min/1h 的 avg/max 已被曲线取代
+            if let day = history.twentyFourHours {
+                Text(String(format: "24h  min %.0f° · max %.0f°", day.min, day.max))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+                    .padding(.top, 4)
             }
-        }
-    }
-
-    private func historyRow(_ label: String, summary: TemperatureHistory.Summary) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(String(format: "avg %.0f° · max %.0f°", summary.avg, summary.max))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
         }
     }
 

@@ -424,9 +424,7 @@ public final class ThermalMonitor {
                     processCount: sample.processCount,
                     heatShare: shares[sample.appID] ?? 0,
                     estimatedDeltaC: delta,
-                    isSystemComponent: identity.isSystemComponent,
-                    // v0.8 What if I quit this?：稳态预期温度 = 当前温度 − 该 App 贡献
-                    quitExpectedCelsius: temperature.map { $0 - delta }
+                    isSystemComponent: identity.isSystemComponent
                 )
             }
             .sorted { $0.heatShare > $1.heatShare }
@@ -464,7 +462,8 @@ public final class ThermalMonitor {
             history: TemperatureHistorySummary(
                 fiveMin: history.last5Minutes(now: now),
                 oneHour: history.lastHour(now: now),
-                twentyFourHours: history.last24Hours(now: now)
+                twentyFourHours: history.last24Hours(now: now),
+                hourBuckets: history.hourBuckets(now: now)
             ),
             coolingForecast: forecastInfo,
             predictionConfidence: confidence,

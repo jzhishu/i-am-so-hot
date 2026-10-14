@@ -17,14 +17,10 @@ public struct AppHeatInfo: Sendable, Identifiable {
     /// 系统归类（macOS / Other）与系统 UI 组件不提供 Quit（PRD §8.3）
     public var canQuit: Bool { rootPid != nil && !isSystemComponent }
 
-    /// v0.8 What if I quit this?：Quit 后的稳态预期温度（温度未知时为 nil）
-    public let quitExpectedCelsius: Double?
-
     public init(
         id: String, name: String, bundlePath: String?, rootPid: pid_t?,
         cpu: Double, gpu: Double = 0, processCount: Int, heatShare: Double, estimatedDeltaC: Double,
-        isSystemComponent: Bool = false,
-        quitExpectedCelsius: Double? = nil
+        isSystemComponent: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -36,7 +32,6 @@ public struct AppHeatInfo: Sendable, Identifiable {
         self.heatShare = heatShare
         self.estimatedDeltaC = estimatedDeltaC
         self.isSystemComponent = isSystemComponent
-        self.quitExpectedCelsius = quitExpectedCelsius
     }
 }
 
@@ -63,19 +58,23 @@ public struct TemperatureHistorySummary: Sendable, Equatable {
     public let fiveMin: TemperatureHistory.Summary?
     public let oneHour: TemperatureHistory.Summary?
     public let twentyFourHours: TemperatureHistory.Summary?
+    /// 最近 1 小时的 30s 桶序列（温度曲线用，时间升序）
+    public let hourBuckets: [TemperatureHistory.Bucket]
 
     public var isEmpty: Bool {
-        fiveMin == nil && oneHour == nil && twentyFourHours == nil
+        fiveMin == nil && oneHour == nil && twentyFourHours == nil && hourBuckets.isEmpty
     }
 
     public init(
         fiveMin: TemperatureHistory.Summary?,
         oneHour: TemperatureHistory.Summary?,
-        twentyFourHours: TemperatureHistory.Summary?
+        twentyFourHours: TemperatureHistory.Summary?,
+        hourBuckets: [TemperatureHistory.Bucket] = []
     ) {
         self.fiveMin = fiveMin
         self.oneHour = oneHour
         self.twentyFourHours = twentyFourHours
+        self.hourBuckets = hourBuckets
     }
 }
 

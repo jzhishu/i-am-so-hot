@@ -138,6 +138,12 @@ public struct TemperatureHistory: Sendable {
         summarize(tier2, window: Self.tier2Window, now: now)
     }
 
+    /// 最近 1 小时的桶序列（UI 温度曲线用，时间升序）
+    public func hourBuckets(now: Date = Date()) -> [Bucket] {
+        let cutoff = now.timeIntervalSince1970 - Self.tier2Window
+        return tier2.filter { $0.start >= cutoff }
+    }
+
     /// 最近 24 小时（tier3 层）
     public func last24Hours(now: Date = Date()) -> Summary? {
         summarize(tier3, window: Self.tier3Window, now: now)
