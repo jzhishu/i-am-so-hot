@@ -83,11 +83,12 @@ struct PopoverView: View {
     }
 
     private var temperatureText: String {
-        if let temp = snapshot.temperatureCelsius {
-            String(format: "%.0f°C", temp)
-        } else {
-            "--°C"
+        guard let temp = snapshot.temperatureCelsius else { return "--°C" }
+        // 整机封装功耗（实测）：温度 + 瓦数是最直接的两个物理量
+        if let watts = snapshot.totalWatts {
+            return String(format: "%.0f° · %.0fW", temp, watts)
         }
+        return String(format: "%.0f°C", temp)
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -131,18 +132,18 @@ struct PopoverView: View {
         return String(format: "%.0f%%", percent)
     }
 
-    /// 行内副标题：CPU + Heat Share（+°C 列已承担 Quit 决策支持，
-    /// quit→~X° 与当前温度只差一个已展示的增量，信息量冗余，已移除）
+    /// 行内副标题：CPU + 瓦数（瓦数是用户可感知的耗电语言；
+    /// Heat Share 是内部排序依据，对普通用户是黑话，不上 UI）
     private func subtitle(_ app: AppHeatInfo) -> String {
         // System Hardware：能耗对账缺口（摄像头/编解码/驱动），
-        // 不占 CPU 是其本质特征，文案直接说明来源；
-        // 摄像头正在采集时点名标注（CMIO 客户端不可见，只能标到硬件级）
+        // 不占 CPU 是其本质特征，瓦数前置 + 说明来源
         if app.id == AppIdentity.systemHardware.id {
-            return snapshot.cameraActive
-                ? "Camera is active — ISP / media power"
-                : "Camera / media / chip hardware"
+            let source = snapshot.cameraActive
+                ? "camera is active — ISP / media"
+                : "camera / media / chip hardware"
+            return String(format: "~%.1fW · %@", app.watts, source)
         }
-        return String(format: "CPU %@ · Heat %.0f%%", cpuText(app.cpu), app.heatShare * 100)
+        return String(format: "CPU %@ · %.1fW", cpuText(app.cpu), app.watts)
     }
 
     private func appRow(_ app: AppHeatInfo) -> some View {
@@ -171,7 +172,7 @@ struct PopoverView: View {
     private func tailRow(_ tail: ArraySlice<AppHeatInfo>) -> some View {
         let sumDelta = tail.reduce(0) { $0 + $1.estimatedDeltaC }
         let sumCPU = tail.reduce(0) { $0 + $1.cpu }
-        let sumShare = tail.reduce(0) { $0 + $1.heatShare }
+        let sumWatts = tail.reduce(0) { $0 + $1.watts }
         return HStack(alignment: .center, spacing: 8) {
             Image(systemName: "ellipsis")
                 .foregroundStyle(.secondary)
@@ -179,7 +180,7 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(tail.count) more apps")
                     .foregroundStyle(.secondary)
-                Text(String(format: "CPU %@ · Heat %.0f%%", cpuText(sumCPU), sumShare * 100))
+                Text(String(format: "CPU %@ · %.1fW", cpuText(sumCPU), sumWatts))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
