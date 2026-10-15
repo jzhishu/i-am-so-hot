@@ -11,9 +11,6 @@ public struct AppHeatInfo: Sendable, Identifiable {
     public let processCount: Int
     public let heatShare: Double   // 0~1
     public let estimatedDeltaC: Double
-    /// 瞬时功率估值（瓦）：(CPU + w_g×GPU) × wattsPerCore，缺口归因的 App 含缺口瓦数。
-    /// 估算值，非实测（面板底部免责声明覆盖）
-    public let watts: Double
     /// 系统 UI 组件（控制中心 / Dock / Finder 等）：不提供 Quit
     public let isSystemComponent: Bool
 
@@ -23,8 +20,7 @@ public struct AppHeatInfo: Sendable, Identifiable {
     public init(
         id: String, name: String, bundlePath: String?, rootPid: pid_t?,
         cpu: Double, gpu: Double = 0, processCount: Int, heatShare: Double, estimatedDeltaC: Double,
-        isSystemComponent: Bool = false,
-        watts: Double = 0
+        isSystemComponent: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -36,7 +32,6 @@ public struct AppHeatInfo: Sendable, Identifiable {
         self.heatShare = heatShare
         self.estimatedDeltaC = estimatedDeltaC
         self.isSystemComponent = isSystemComponent
-        self.watts = watts
     }
 }
 
@@ -107,8 +102,6 @@ public struct MonitorSnapshot: Sendable {
     public let predictionConfidence: CoolingPrediction.Confidence
     /// 摄像头正在采集（System Hardware 副标题标注用，仅缺口发生时采样）
     public let cameraActive: Bool
-    /// 整机封装功耗（CPU + GPU 瓦数，实测；功耗计不可用时为 nil）
-    public let totalWatts: Double?
 
     public init(
         temperatureCelsius: Double?,
@@ -123,8 +116,7 @@ public struct MonitorSnapshot: Sendable {
         history: TemperatureHistorySummary? = nil,
         coolingForecast: CoolingForecastInfo? = nil,
         predictionConfidence: CoolingPrediction.Confidence = .normal,
-        cameraActive: Bool = false,
-        totalWatts: Double? = nil
+        cameraActive: Bool = false
     ) {
         self.temperatureCelsius = temperatureCelsius
         self.baselineCelsius = baselineCelsius
@@ -139,6 +131,5 @@ public struct MonitorSnapshot: Sendable {
         self.coolingForecast = coolingForecast
         self.predictionConfidence = predictionConfidence
         self.cameraActive = cameraActive
-        self.totalWatts = totalWatts
     }
 }

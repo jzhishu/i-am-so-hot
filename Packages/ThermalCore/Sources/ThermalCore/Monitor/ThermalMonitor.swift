@@ -92,8 +92,6 @@ public final class ThermalMonitor {
     public private(set) var lastHardwareGapCores: Double = 0
     /// 最近一次缺口 tick 的摄像头采集状态（DEBUG CSV 观测用）
     public private(set) var lastCameraActive = false
-    /// 本 tick 缺口的归因目标（瓦数计算用）：mic App / systemHardware / nil（无缺口）
-    private var lastGapTargetAppID: String?
 
     public var currentMode: SamplingMode { modeController.mode }
 
@@ -346,7 +344,6 @@ public final class ThermalMonitor {
         // 注入 System Hardware 伪 App 参与归因，而不是静默推高残差。
         var scores = powerScores
         lastHardwareGapCores = 0
-        lastGapTargetAppID = nil
         if let power {
             let gap = Self.hardwareGapCores(
                 cpuWatts: power.cpuWatts,
@@ -359,7 +356,6 @@ public final class ThermalMonitor {
                 // 摄像头 ISP / 编解码 / 音频 DSP 的热量算它的）→ 否则 System Hardware
                 if let micAppID = micActiveAppID() {
                     scores[micAppID, default: 0] += gap
-                    lastGapTargetAppID = micAppID
                     // SLEEP 间隙该 App 可能无进程样本，补合成样本保证热榜可见
                     if lastAppSamples[micAppID] == nil {
                         lastAppSamples[micAppID] = AppSample(appID: micAppID, processes: [], cpu: 0, gpu: 0)
@@ -369,7 +365,6 @@ public final class ThermalMonitor {
                     // 扩展不可见，只能标注「摄像头在烧电」，不能点名）
                     lastCameraActive = cameraSampler.isFrontCameraStreaming()
                     scores[AppIdentity.systemHardware.id, default: 0] += gap
-                    lastGapTargetAppID = AppIdentity.systemHardware.id
                 }
             }
         }
@@ -419,11 +414,6 @@ public final class ThermalMonitor {
             .map { sample in
                 let identity = appsByID[sample.appID] ?? .other
                 let delta = deltaCs[sample.appID] ?? 0
-                // 瓦数估值：(CPU + w_g×GPU) × 每核瓦数；缺口归因目标加上缺口瓦数
-                var coreEquiv = sample.cpu + gpuWeight * sample.gpu
-                if sample.appID == lastGapTargetAppID {
-                    coreEquiv += lastHardwareGapCores
-                }
                 return AppHeatInfo(
                     id: sample.appID,
                     name: identity.localizedName,
@@ -434,8 +424,7 @@ public final class ThermalMonitor {
                     processCount: sample.processCount,
                     heatShare: shares[sample.appID] ?? 0,
                     estimatedDeltaC: delta,
-                    isSystemComponent: identity.isSystemComponent,
-                    watts: coreEquiv * gpuWeightCalibrator.wattsPerCore
+                    isSystemComponent: identity.isSystemComponent
                 )
             }
             .sorted { $0.heatShare > $1.heatShare }
@@ -478,8 +467,7 @@ public final class ThermalMonitor {
             ),
             coolingForecast: forecastInfo,
             predictionConfidence: confidence,
-            cameraActive: lastCameraActive,
-            totalWatts: power.map { $0.cpuWatts + $0.gpuWatts }
+            cameraActive: lastCameraActive
         )
     }
 }
