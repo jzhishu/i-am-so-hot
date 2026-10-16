@@ -70,7 +70,15 @@ public final class AppResolver {
         }
         // 1. PID 直接命中
         if let app = appsByPid[sample.pid] {
-            return ProcessOwnership(appID: app.id, confidence: 1.0, method: .runningApplication)
+            // 特例：可执行文件在 /System 下的「注册 App」其实是系统 XPC
+            // （com.apple.Virtualization.VirtualMachine：Docker/OrbStack/UTM
+            // 的虚拟机进程，显示名甚至是宿主随手写的「Docker的」）。
+            // 直命会把它当成独立 App，跳过，交给 responsible PID 归宿主。
+            if let exec = app.executablePath, exec.hasPrefix("/System/") {
+                // fall through 到 responsible / 路径规则
+            } else {
+                return ProcessOwnership(appID: app.id, confidence: 1.0, method: .runningApplication)
+            }
         }
         // 2. Bundle path 匹配（覆盖 Chrome Helper / Renderer 等 bundle 内进程）
         if let path = sample.executablePath, let app = app(containingPath: path) {

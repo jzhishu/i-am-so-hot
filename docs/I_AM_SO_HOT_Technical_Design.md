@@ -158,6 +158,10 @@ AppIdentity
 按以下顺序：
 
 1. PID 直接对应已知 NSRunningApplication。
+   - 特例（2026-10-15）：可执行文件在 `/System/` 下的注册 App 跳过直命——
+     如 `com.apple.Virtualization.VirtualMachine`（Docker/OrbStack/UTM 的
+     虚拟机 XPC，显示名甚至是宿主随手写的「Docker的」），
+     交给 responsible PID 归到宿主 App。
 2. executable path 位于某 `.app` Bundle 内。
 3. 向上追 PPID，找到可识别 App。
 4. 使用 responsible PID / process coalition。

@@ -26,6 +26,50 @@ final class AppResolverTests: XCTestCase {
         return resolver
     }
 
+    /// 虚拟机场景（2026-10-15 实测）：com.apple.Virtualization.VirtualMachine
+    /// 是 /System 下的 XPC，但会注册为 NSRunningApplication（Docker 把它的
+    /// 显示名写成「Docker的」）。直命规则必须跳过 /System 身份的注册 App，
+    /// 让 responsible PID 把虚拟机归到宿主（Docker）。
+    func testSystemPathRegisteredAppFallsThroughToResponsiblePID() {
+        let dockerBackend = AppIdentity(
+            id: "com.docker.docker",
+            rootPid: 3000,
+            bundleID: "com.docker.docker",
+            localizedName: "Docker",
+            bundlePath: "/Applications/Docker.app",
+            executablePath: "/Applications/Docker.app/Contents/MacOS/com.docker.backend"
+        )
+        // 虚拟机进程也注册为 App（可执行文件在 /System 下）
+        let vmApp = AppIdentity(
+            id: "com.apple.Virtualization.VirtualMachine",
+            rootPid: 4000,
+            bundleID: "com.apple.Virtualization.VirtualMachine",
+            localizedName: "Docker的",
+            executablePath: "/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine"
+        )
+        let resolver = AppResolver()
+        resolver.updateRegistry([dockerBackend, vmApp])
+
+        let vmSample = ProcessSample(
+            pid: 4000, parentPid: 1,
+            responsiblePid: 3000,
+            executablePath: vmApp.executablePath,
+            processName: "com.apple.Virtualization.VirtualMachine",
+            cpuTimeDelta: 0
+        )
+        let ownership = resolver.resolve(vmSample, allSamples: [:])
+        XCTAssertEqual(ownership.appID, "com.docker.docker", "虚拟机应归到宿主 Docker")
+        XCTAssertEqual(ownership.method, .responsiblePID)
+    }
+
+    /// 回归：/Applications 下的正常注册 App 仍然直命
+    func testNormalRegisteredAppStillDirectHit() {
+        let resolver = makeResolver()
+        let ownership = resolver.resolve(sample(1000, path: chrome.executablePath), allSamples: [:])
+        XCTAssertEqual(ownership.appID, chrome.id)
+        XCTAssertEqual(ownership.method, .runningApplication)
+    }
+
     private func sample(
         _ pid: pid_t, ppid: pid_t = 1,
         name: String = "proc", path: String? = nil
