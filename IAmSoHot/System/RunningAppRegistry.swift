@@ -12,10 +12,19 @@ final class RunningAppRegistry {
 
     /// 当前运行的用户可识别 App（排除纯后台 prohibited 进程，
     /// 并经 AppRegistryMerger 归并嵌套 bundle 的 Helper）。
+    ///
+    /// 同时排除可执行文件在 /System 下的「注册 App」：那是系统 XPC
+    /// （如 com.apple.Virtualization.VirtualMachine，Docker/UTM 的虚拟机），
+    /// 不是用户可识别的 App，应在 resolver 里走 responsible PID 归宿主。
+    /// （2026-10-15 实测：Docker 把 VM 进程显示名写成「Docker的」，
+    /// 注册表收录它导致热榜出现两个 Docker。）
     func currentApps() -> [AppIdentity] {
         let identities: [AppIdentity] = NSWorkspace.shared.runningApplications.compactMap { app in
             guard app.activationPolicy != .prohibited,
                   let bundleURL = app.bundleURL else { return nil }
+            if let execPath = app.executableURL?.path, execPath.hasPrefix("/System/") {
+                return nil
+            }
             let id = app.bundleIdentifier ?? bundleURL.path
             // 图标直接用 NSRunningApplication.icon（比 icon(forFile:) 可靠），
             // 归并时按 appID 缓存
