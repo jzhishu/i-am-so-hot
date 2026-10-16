@@ -82,7 +82,15 @@ i-am-so-hot/
 
 ---
 
-## 5. 当前版本目标（v0.1 Core MVP）
+## 5. 版本状态（2026-10-16）
+
+**v1.0 已收口**：v0.1–v0.8 全部完成，功能闭环（看温度 → 谁搞的 → Quit → 降温验证），
+并经真实使用打磨（能耗对账 / 余热分解 / 虚拟机归属修复 / UI 信息纯净原则）。
+后续进入 v1.x：Chrome Tab 归因、Estimated Watts、长期统计等增强，
+发布与商业化按既定决策仍推迟到 v1.x 之后。
+
+<details>
+<summary>历史：v0.1 Core MVP 目标（已达成）</summary>
 
 必须交付：
 
@@ -106,6 +114,8 @@ Phase 1 Collector（温度 / Total CPU / per-process CPU）
 → Phase 5 Adaptive Monitoring（三种采样模式）
 → Phase 6 Quit（terminate + 系统保护）
 ```
+
+</details>
 
 ---
 

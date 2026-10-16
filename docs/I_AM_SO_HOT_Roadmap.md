@@ -81,8 +81,28 @@ v1.0  Predictive Thermal Monitor
 | v0.2 | ✅ 已完成（2026-09-30） | 归属增强 / PID reuse / 压测验证 / 自身能耗达标 |
 | v0.3 | ✅ 已完成（2026-09-30） | 随热模型 v2 重写落地：热水库 / Heat Share / +°C |
 | v0.5 | ✅ 已完成（2026-10-10） | 动态 Baseline / g 在线校准 / 双时间常数 / GPU Attribution / w_g 在线标定 / 历史记录 |
-| v0.8 | ⬜ 未开始 | |
-| v1.0 | ⬜ 未开始 | 目标：功能完整，本地长期运行验证 |
+| v0.8 | ✅ 已完成（2026-10-10） | What-if →（后移除）/ Cooling Forecast / Confidence；真实 Quit 场景验证预测方向正确 |
+| v1.0 | ✅ 已完成（2026-10-16） | 功能闭环 + 真实使用打磨：能耗对账 / 麦克风归因 / 摄像头检测 / 余热分解 / 温度曲线 / 虚拟机归属修复 |
+
+## v1.0 收尾记录（2026-10-16）
+
+真实使用暴露并修复的问题（比规划的功能更有价值）：
+
+1. **硬件加速器盲区**：ChatGPT 视频场景 CPU 封装 16W 无进程可归因
+   → 能耗对账（System Hardware 桶）+ 麦克风归因（CoreAudio 进程 API）
+   + 摄像头状态检测（IOKit `FrontCameraStreaming`）
+2. **机身余热不可见**：重负载后 idle 仍 45°C，用户误以为模型失灵
+   → 余热分解（baseline − 24h 环境底）+ Cooling Down 文案
+3. **两个 Docker**：Virtualization.framework 的 VM 进程注册为 App
+   （显示名「Docker的」）→ 注册表排除 /System 系统 XPC，
+   responsible PID 归宿主，OrbStack/UTM 通用受益
+4. **UI 三轮收敛**：删 quit→（冗余）→ Heat% 下台（黑话）→
+   瓦数上又下（用户判断温度最直观）→ 定稿原则：面板只回答
+   「多热、谁搞的、走势如何」，中间量一律不上屏
+5. **w_g 野样本漂移**：轻负载 GPU 功耗不与 busy 成比例，
+   护栏 0.2→0.5；收敛质量列入 v1.x 观察项
+
+遗留观察项（不阻塞）：w_g 收敛轨迹、hw_gap 归因边界情况。
 
 ## v0.1 验收核对（对应 §3 验收标准）
 
